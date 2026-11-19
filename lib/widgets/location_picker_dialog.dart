@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import '../services/location_service.dart';
 
@@ -33,34 +35,71 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
 
   // Real device GPS position
   LatLng _selectedPoint = const LatLng(11.5606, 124.3986);
+  bool _isFetchingAddress = false;
   double _currentZoom = 15.0;
   double _currentRotation = 0.0;
   bool _isLoadingGps = false;
 
   final List<Map<String, dynamic>> _popularLocations = [
     {
-      'name': 'Naval Center',
-      'full': 'Naval, Biliran, Philippines',
+      'name': 'Naval Public Market & Commercial Center',
+      'full': 'Naval Public Market, Naval, Biliran, Philippines',
+      'lat': 11.5620,
+      'lng': 124.3980,
+    },
+    {
+      'name': 'Castin Street / Centro Naval',
+      'full': 'Castin St, Naval Centro, Biliran, Philippines',
       'lat': 11.5606,
       'lng': 124.3986,
     },
     {
-      'name': 'Brgy. Smo. Rosario',
-      'full': 'Brgy. Smo. Rosario, Naval, Biliran, Philippines',
-      'lat': 11.5615,
-      'lng': 124.3975,
+      'name': 'M.H. del Pilar Street',
+      'full': 'M.H. del Pilar St, Naval, Biliran, Philippines',
+      'lat': 11.5612,
+      'lng': 124.3970,
     },
     {
-      'name': 'Brgy. P.I. Garcia',
-      'full': 'Brgy. P.I. Garcia, Naval, Biliran, Philippines',
-      'lat': 11.5640,
+      'name': 'Corazon Street',
+      'full': 'Corazon St, Naval, Biliran, Philippines',
+      'lat': 11.5595,
+      'lng': 124.3995,
+    },
+    {
+      'name': 'National Highway, Caraycaray',
+      'full': 'Caraycaray National Highway, Naval, Biliran, Philippines',
+      'lat': 11.5530,
+      'lng': 124.4080,
+    },
+    {
+      'name': 'Naval Port / Pier Area',
+      'full': 'Naval Port, Seawall, Naval, Biliran, Philippines',
+      'lat': 11.5645,
+      'lng': 124.3945,
+    },
+    {
+      'name': 'BiPSU Main Campus',
+      'full': 'BiPSU Main Campus, Naval, Biliran, Philippines',
+      'lat': 11.5660,
+      'lng': 124.4005,
+    },
+    {
+      'name': 'Biliran Provincial Hospital Area',
+      'full': 'Provincial Hospital Road, Naval, Biliran, Philippines',
+      'lat': 11.5580,
+      'lng': 124.4020,
+    },
+    {
+      'name': 'Naval Gymnasium & Sports Complex',
+      'full': 'Naval Gymnasium, Naval, Biliran, Philippines',
+      'lat': 11.5630,
       'lng': 124.3960,
     },
     {
-      'name': 'Brgy. Atipolo',
-      'full': 'Brgy. Atipolo, Naval, Biliran, Philippines',
-      'lat': 11.5580,
-      'lng': 124.4020,
+      'name': 'Brgy. Santissimo Rosario',
+      'full': 'Brgy. Santissimo Rosario, Naval, Biliran, Philippines',
+      'lat': 11.5615,
+      'lng': 124.3975,
     },
     {
       'name': 'Brgy. Agpangi',
@@ -73,18 +112,6 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
       'full': 'Brgy. Calumpang, Naval, Biliran, Philippines',
       'lat': 11.5510,
       'lng': 124.3940,
-    },
-    {
-      'name': 'Brgy. Caraycaray',
-      'full': 'Brgy. Caraycaray, Naval, Biliran, Philippines',
-      'lat': 11.5530,
-      'lng': 124.4080,
-    },
-    {
-      'name': 'BiPSU Main Campus',
-      'full': 'BiPSU Main Campus, Naval, Biliran, Philippines',
-      'lat': 11.5660,
-      'lng': 124.4005,
     },
   ];
 
@@ -115,32 +142,79 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
     super.dispose();
   }
 
-  // Automatic address resolver on pin placement
-  void _updateAddressFromPoint(LatLng point, {String? customLabel}) {
-    String resolvedAddress = customLabel ?? '';
-    const distanceThreshold = 0.008; // ~800m radius
+  // Automatic live reverse geocoding via OpenStreetMap Nominatim API with smart fallback
+  Future<void> _updateAddressFromPoint(LatLng point, {String? customLabel}) async {
+    setState(() {
+      _selectedPoint = point;
+      if (customLabel != null) {
+        _addressCtrl.text = customLabel;
+        return;
+      }
+      _isFetchingAddress = true;
+    });
+
+    String resolvedAddress = '';
+
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=${point.latitude}&lon=${point.longitude}&zoom=18&addressdetails=1',
+      );
+      final response = await http.get(
+        url,
+        headers: {'User-Agent': 'com.hanapgawa.app'},
+      ).timeout(const Duration(seconds: 4));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data != null && data['display_name'] != null) {
+          resolvedAddress = data['display_name'] as String;
+        }
+      }
+    } catch (e) {
+      // Offline or timeout - fallback to smart local mapping
+    }
 
     if (resolvedAddress.isEmpty) {
+      const distanceThreshold = 0.015;
+      Map<String, dynamic>? closestLocation;
+      double minDistance = double.infinity;
+
       for (final loc in _popularLocations) {
         final double lat = loc['lat'] as double;
         final double lng = loc['lng'] as double;
         final double diff = (lat - point.latitude).abs() + (lng - point.longitude).abs();
-        if (diff < distanceThreshold) {
-          resolvedAddress = loc['full'] as String;
-          break;
+        if (diff < minDistance) {
+          minDistance = diff;
+          closestLocation = loc;
         }
+      }
+
+      if (closestLocation != null && minDistance < distanceThreshold) {
+        final name = closestLocation['name'] as String;
+        final full = closestLocation['full'] as String;
+        resolvedAddress = '$name, $full';
+      } else {
+        String streetOrArea = 'Naval Centro Commercial District';
+        if (point.latitude > 11.565) {
+          streetOrArea = 'Agpangi Main Road / North District';
+        } else if (point.latitude < 11.555) {
+          streetOrArea = 'Calumpang / Atipolo Access Road';
+        } else if (point.longitude > 12.400) {
+          streetOrArea = 'Caraycaray National Highway';
+        } else {
+          streetOrArea = 'Castin St / M.H. del Pilar Street Area';
+        }
+        resolvedAddress = '$streetOrArea, Naval, Biliran';
       }
     }
 
-    if (resolvedAddress.isEmpty) {
-      resolvedAddress =
-          'Naval, Biliran, Philippines (${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)})';
+    if (mounted) {
+      setState(() {
+        _selectedPoint = point;
+        _addressCtrl.text = resolvedAddress;
+        _isFetchingAddress = false;
+      });
     }
-
-    setState(() {
-      _selectedPoint = point;
-      _addressCtrl.text = resolvedAddress;
-    });
   }
 
   Future<void> _goToMyLocation() async {
@@ -153,8 +227,7 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
     if (mounted) {
       _updateAddressFromPoint(
         realLoc,
-        customLabel:
-            'My Device GPS Location (${realLoc.latitude.toStringAsFixed(4)}, ${realLoc.longitude.toStringAsFixed(4)})',
+        customLabel: 'My Device GPS Location, Naval, Biliran',
       );
       setState(() {
         _currentZoom = 16.0;
@@ -561,14 +634,24 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Selected Address TextFormField (Auto-updated on pin tap or My Location!)
+                    // Selected Address TextFormField (Auto-updated or manually editable!)
                     TextFormField(
                       controller: _addressCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Pinned Address / Location (Auto-filled)',
-                        prefixIcon: Icon(Icons.pin_drop, color: maroonColor),
-                        border: OutlineInputBorder(),
-                        helperText: 'Auto-updates when you tap map or blue GPS button',
+                      decoration: InputDecoration(
+                        labelText: 'Pinned Address / Location (Auto-filled / Fully Editable)',
+                        prefixIcon: const Icon(Icons.pin_drop, color: maroonColor),
+                        suffixIcon: _isFetchingAddress
+                            ? const Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: maroonColor),
+                                ),
+                              )
+                            : const Icon(Icons.edit, size: 18, color: Colors.grey),
+                        border: const OutlineInputBorder(),
+                        helperText: 'Auto-fills exact street/landmark when you tap map, or type/edit manually',
                       ),
                     ),
                     const SizedBox(height: 14),
