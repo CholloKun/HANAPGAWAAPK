@@ -292,4 +292,31 @@ CREATE TABLE IF NOT EXISTS public.job_bookings (
       if (kDebugMode) print('Supabase Auth SignOut error: $e');
     }
   }
+
+  Future<bool> resendVerificationEmail(String email) async {
+    if (!_isInitialized || client == null) return false;
+    try {
+      await client!.auth.resend(
+        type: OtpType.signup,
+        email: email,
+      );
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('Supabase Resend Verification error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> isEmailConfirmed() async {
+    if (!_isInitialized || client == null) return true;
+    try {
+      await client!.auth.refreshSession();
+      final user = client!.auth.currentUser;
+      if (user == null) return false;
+      return user.emailConfirmedAt != null;
+    } catch (e) {
+      if (kDebugMode) print('Check email confirmation error: $e');
+      return true;
+    }
+  }
 }

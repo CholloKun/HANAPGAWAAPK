@@ -196,6 +196,22 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
     });
   }
 
+  void _rotateLeft() {
+    setState(() {
+      _currentRotation -= 45.0;
+      if (_currentRotation < 0) _currentRotation += 360.0;
+      _mapController.rotate(_currentRotation);
+    });
+  }
+
+  void _rotateRight() {
+    setState(() {
+      _currentRotation += 45.0;
+      if (_currentRotation >= 360) _currentRotation -= 360.0;
+      _mapController.rotate(_currentRotation);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     const maroonColor = Color(0xFF800000);
@@ -379,6 +395,22 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                           ),
                           const SizedBox(height: 6),
 
+                          // Rotate Left Button
+                          Material(
+                            color: Colors.white,
+                            shape: const CircleBorder(),
+                            elevation: 4,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _rotateLeft,
+                              child: const Padding(
+                                padding: EdgeInsets.all(7.0),
+                                child: Icon(Icons.rotate_left, color: maroonColor, size: 18),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+
                           // Compass Rotation Reset Button
                           Transform.rotate(
                             angle: -_currentRotation * (3.141592653589793 / 180),
@@ -393,6 +425,22 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                                   padding: EdgeInsets.all(7.0),
                                   child: Icon(Icons.navigation, color: maroonColor, size: 18),
                                 ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+
+                          // Rotate Right Button
+                          Material(
+                            color: Colors.white,
+                            shape: const CircleBorder(),
+                            elevation: 4,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _rotateRight,
+                              child: const Padding(
+                                padding: EdgeInsets.all(7.0),
+                                child: Icon(Icons.rotate_right, color: maroonColor, size: 18),
                               ),
                             ),
                           ),

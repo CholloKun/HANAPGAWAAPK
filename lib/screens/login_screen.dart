@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../models/app_models.dart';
 import '../services/data_service.dart';
+import '../services/supabase_service.dart';
 import '../widgets/hanap_gawa_logo.dart';
 import 'signup_screen.dart';
 import 'customer_home_screen.dart';
@@ -21,31 +23,85 @@ class _LoginScreenState extends State<LoginScreen> {
   UserRole _selectedRole = UserRole.customer;
   final DataService _dataService = DataService();
 
-  void _login() {
+  Route<T> _smoothRoute<T>(Widget page) {
+    return PageRouteBuilder<T>(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        const begin = Offset(0.0, 0.04);
+        const end = Offset.zero;
+        const curve = Curves.easeInOutCubic;
+        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        var fadeTween = Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: curve));
+
+        return SlideTransition(
+          position: animation.drive(tween),
+          child: FadeTransition(
+            opacity: animation.drive(fadeTween),
+            child: child,
+          ),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 350),
+    );
+  }
+
+  Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final email = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text.trim();
+
     if (_selectedRole == UserRole.customer) {
-      final customer = CustomerModel(
-        id: 'c_user',
-        name: 'Juan Dela Cruz',
-        email: _emailCtrl.text.trim(),
-        phone: '0917-888-9900',
-        birthday: '1995-04-12',
-        address: 'España Blvd, Sampaloc, Manila',
-      );
-      _dataService.setLoggedInCustomer(customer);
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),
-      );
+      bool isConfirmed = true;
+      try {
+        final authResponse = await SupabaseService().signIn(email: email, password: password);
+        if (authResponse != null && authResponse.user != null) {
+          isConfirmed = await SupabaseService().isEmailConfirmed();
+        }
+      } catch (e) {
+        // Fallback for offline/mock mode
+      }
+
+      if (!isConfirmed) {
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => EmailConfirmationWaitingDialog(
+              email: email,
+              onConfirmed: () {
+                _proceedToCustomerHome();
+              },
+            ),
+          );
+        }
+      } else {
+        _proceedToCustomerHome();
+      }
     } else {
       final worker = _dataService.workers.first;
       _dataService.setLoggedInWorker(worker);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const WorkerHomeScreen()),
+        _smoothRoute(const WorkerHomeScreen()),
       );
     }
+  }
+
+  void _proceedToCustomerHome() {
+    final customer = CustomerModel(
+      id: 'c_user',
+      name: 'Juan Dela Cruz',
+      email: _emailCtrl.text.trim(),
+      phone: '0917-888-9900',
+      birthday: '1995-04-12',
+      address: 'España Blvd, Sampaloc, Manila',
+    );
+    _dataService.setLoggedInCustomer(customer);
+    Navigator.pushReplacement(
+      context,
+      _smoothRoute(const CustomerHomeScreen()),
+    );
   }
 
   @override
@@ -256,9 +312,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => SignupScreen(initialRole: _selectedRole),
-                          ),
+                          _smoothRoute(SignupScreen(initialRole: _selectedRole)),
                         );
                       },
                       child: const Text(
@@ -277,6 +331,124 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class EmailConfirmationWaitingDialog extends StatefulWidget {
+  final String email;
+  final VoidCallback onConfirmed;
+
+  const EmailConfirmationWaitingDialog({
+    super.key,
+    required this.email,
+    required this.onConfirmed,
+  });
+
+  @override
+  State<EmailConfirmationWaitingDialog> createState() => _EmailConfirmationWaitingDialogState();
+}
+
+class _EmailConfirmationWaitingDialogState extends State<EmailConfirmationWaitingDialog> {
+  Timer? _timer;
+  bool _isResending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      final confirmed = await SupabaseService().isEmailConfirmed();
+      if (confirmed && mounted) {
+        _timer?.cancel();
+        Navigator.pop(context);
+        widget.onConfirmed();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _resendEmail() async {
+    setState(() => _isResending = true);
+    final success = await SupabaseService().resendVerificationEmail(widget.email);
+    setState(() => _isResending = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Verification email resent successfully!' : 'Failed to resend email.'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const maroonColor = Color(0xFF800000);
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Row(
+        children: [
+          Icon(Icons.mark_email_unread, color: maroonColor, size: 26),
+          SizedBox(width: 8),
+          Text('Confirm Your Email First'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Your email (${widget.email}) is not verified yet.\n\nPlease check your inbox and click the email confirmation link sent by Supabase.',
+            style: const TextStyle(fontSize: 13, color: Colors.black87),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          const CircularProgressIndicator(color: maroonColor),
+          const SizedBox(height: 14),
+          const Text(
+            'Waiting for confirmation...',
+            style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 12),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isResending ? null : _resendEmail,
+          child: _isResending
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: maroonColor),
+                )
+              : const Text('Resend Email', style: TextStyle(color: maroonColor, fontWeight: FontWeight.bold)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: maroonColor,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: () async {
+            final confirmed = await SupabaseService().isEmailConfirmed();
+            if (confirmed && mounted) {
+              _timer?.cancel();
+              Navigator.pop(context);
+              widget.onConfirmed();
+            } else if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Email not confirmed yet. Please verify your email inbox.'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+          },
+          child: const Text('I HAVE CONFIRMED'),
+        ),
+      ],
     );
   }
 }

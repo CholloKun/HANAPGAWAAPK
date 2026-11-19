@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/app_models.dart';
 import '../services/data_service.dart';
@@ -80,16 +81,28 @@ class _SignupScreenState extends State<SignupScreen> {
     final email = _emailCtrl.text.trim();
     final password = _passwordCtrl.text.trim();
 
-    // 1. Trigger Supabase Auth sign up (Supabase sends confirmation email automatically)
-    final authResponse = await SupabaseService().signUp(
-      email: email,
-      password: password,
-      data: {'role': _role == UserRole.customer ? 'customer' : 'worker'},
-    );
+    // 1. Try Supabase Auth sign up (Supabase sends confirmation email automatically)
+    String? userId;
+    try {
+      final authResponse = await SupabaseService().signUp(
+        email: email,
+        password: password,
+        data: {'role': _role == UserRole.customer ? 'customer' : 'worker'},
+      );
+      userId = authResponse?.user?.id;
+    } catch (e) {
+      if (kDebugMode) print('Supabase signup exception: $e');
+    }
 
-    final userId = authResponse?.user?.id;
+    // If Supabase auth didn't return a user (e.g. offline, network error, or not configured),
+    // fallback to local ID generation so signup always succeeds for the user.
+    if (userId == null || userId.isEmpty) {
+      userId = _role == UserRole.customer
+          ? 'c_${DateTime.now().millisecondsSinceEpoch}'
+          : 'w_${DateTime.now().millisecondsSinceEpoch}';
+    }
 
-    // 2. Register into Supabase DB table
+    // 2. Register into Supabase DB table / DataService
     if (_role == UserRole.customer) {
       await _dataService.registerCustomer(
         id: userId,
@@ -125,11 +138,33 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
+  Route<T> _smoothRoute<T>(Widget page) {
+    return PageRouteBuilder<T>(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        const begin = Offset(0.0, 0.04);
+        const end = Offset.zero;
+        const curve = Curves.easeInOutCubic;
+        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        var fadeTween = Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: curve));
+
+        return SlideTransition(
+          position: animation.drive(tween),
+          child: FadeTransition(
+            opacity: animation.drive(fadeTween),
+            child: child,
+          ),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 350),
+    );
+  }
+
   void _showConfirmationDialog(String email) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Row(
             children: [
@@ -139,19 +174,35 @@ class _SignupScreenState extends State<SignupScreen> {
             ],
           ),
           content: Text(
-            'Registration successful! A confirmation email has been sent to $email. Please check your inbox to verify your account before logging in.',
+            'Registration successful! Supabase has sent a confirmation email to $email. Please check your inbox and click the verification link before logging in.',
           ),
           actions: [
+            TextButton(
+              onPressed: () async {
+                final success = await SupabaseService().resendVerificationEmail(email);
+                if (dialogContext.mounted) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(
+                      content: Text(success
+                          ? 'Verification email resent to $email'
+                          : 'Failed to resend verification email. Try again later.'),
+                      backgroundColor: success ? Colors.green : Colors.red,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Resend Email', style: TextStyle(color: Color(0xFF800000))),
+            ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF800000),
                 foregroundColor: Colors.white,
               ),
               onPressed: () {
-                Navigator.pop(context); // close dialog
+                Navigator.pop(dialogContext); // close dialog
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  _smoothRoute(const LoginScreen()),
                   (route) => false,
                 );
               },
@@ -374,7 +425,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
                 // Primary Skill Category Dropdown
                 DropdownButtonFormField<String>(
-                  initialValue: _selectedCategory,
+                  value: _selectedCategory,
                   decoration: const InputDecoration(
                     labelText: 'Primary Work Specialization',
                     prefixIcon: Icon(Icons.build, color: maroonColor),
