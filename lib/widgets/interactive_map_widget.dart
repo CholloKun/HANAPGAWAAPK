@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/app_models.dart';
 import '../screens/job_detail_screen.dart';
+import '../services/location_service.dart';
 
 class InteractiveMapWidget extends StatefulWidget {
   final List<JobBooking> jobs;
@@ -23,56 +27,95 @@ class InteractiveMapWidget extends StatefulWidget {
 }
 
 class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
+  late final MapController _mapController;
   JobBooking? _activeJob;
+  double _currentZoom = 14.5;
+  double _currentRotation = 0.0;
 
-  final TransformationController _transformationController = TransformationController();
-  double _currentZoomScale = 1.0;
+  // Real GPS Location state
+  LatLng _userGpsLocation = const LatLng(11.5606, 124.3986);
+  bool _isLoadingGps = false;
 
   @override
   void initState() {
     super.initState();
+    _mapController = MapController();
     _activeJob = widget.selectedJob ?? (widget.jobs.isNotEmpty ? widget.jobs.first : null);
-    _transformationController.addListener(_onZoomChanged);
+    _fetchRealDeviceLocation();
   }
 
-  @override
-  void dispose() {
-    _transformationController.removeListener(_onZoomChanged);
-    _transformationController.dispose();
-    super.dispose();
-  }
-
-  void _onZoomChanged() {
-    final double scale = _transformationController.value.getMaxScaleOnAxis();
+  Future<void> _fetchRealDeviceLocation() async {
+    final realLoc = await LocationService().getCurrentDeviceLocation();
     if (mounted) {
       setState(() {
-        _currentZoomScale = scale;
+        _userGpsLocation = realLoc;
       });
     }
   }
 
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
   void _zoomIn() {
-    final double newScale = (_currentZoomScale * 1.3).clamp(0.8, 3.5);
-    _setZoom(newScale);
+    setState(() {
+      _currentZoom = (_currentZoom + 1).clamp(3.0, 18.0);
+      final center = _mapController.camera.center;
+      _mapController.move(center, _currentZoom);
+    });
   }
 
   void _zoomOut() {
-    final double newScale = (_currentZoomScale / 1.3).clamp(0.8, 3.5);
-    _setZoom(newScale);
-  }
-
-  void _resetZoom() {
-    _transformationController.value = Matrix4.identity();
     setState(() {
-      _currentZoomScale = 1.0;
+      _currentZoom = (_currentZoom - 1).clamp(3.0, 18.0);
+      final center = _mapController.camera.center;
+      _mapController.move(center, _currentZoom);
     });
   }
 
-  void _setZoom(double targetScale) {
-    _transformationController.value = Matrix4.diagonal3Values(targetScale, targetScale, 1.0);
+  void _resetRecenter() {
     setState(() {
-      _currentZoomScale = targetScale;
+      _currentZoom = 14.5;
+      _mapController.move(_userGpsLocation, _currentZoom);
+      _mapController.rotate(0.0);
+      _currentRotation = 0.0;
     });
+  }
+
+  void _resetRotation() {
+    setState(() {
+      _mapController.rotate(0.0);
+      _currentRotation = 0.0;
+    });
+  }
+
+  Future<void> _goToMyLocation() async {
+    setState(() {
+      _isLoadingGps = true;
+    });
+
+    final realLoc = await LocationService().getCurrentDeviceLocation();
+
+    if (mounted) {
+      setState(() {
+        _userGpsLocation = realLoc;
+        _currentZoom = 16.0;
+        _isLoadingGps = false;
+        _mapController.move(_userGpsLocation, _currentZoom);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Centered on Real Device GPS: Lat ${realLoc.latitude.toStringAsFixed(4)}, Lng ${realLoc.longitude.toStringAsFixed(4)}',
+          ),
+          duration: const Duration(seconds: 3),
+          backgroundColor: const Color(0xFF800000),
+        ),
+      );
+    }
   }
 
   @override
@@ -80,6 +123,10 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
     super.didUpdateWidget(oldWidget);
     if (widget.selectedJob != null) {
       _activeJob = widget.selectedJob;
+      _mapController.move(
+        LatLng(_activeJob!.customerLat, _activeJob!.customerLng),
+        15.0,
+      );
     }
   }
 
@@ -87,17 +134,21 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
   Widget build(BuildContext context) {
     const maroonColor = Color(0xFF800000);
 
+    final initialCenter = _activeJob != null
+        ? LatLng(_activeJob!.customerLat, _activeJob!.customerLng)
+        : _userGpsLocation;
+
     return Container(
       height: widget.height,
       decoration: BoxDecoration(
         color: const Color(0xFFEFEBE7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: maroonColor.withAlpha(75), width: 1.5),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withAlpha(15),
+            color: Colors.black12,
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -105,41 +156,101 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
         borderRadius: BorderRadius.circular(14),
         child: Stack(
           children: [
-            // Zoomable & Pannable Interactive Map Layer
-            InteractiveViewer(
-              transformationController: _transformationController,
-              minScale: 0.8,
-              maxScale: 3.5,
-              boundaryMargin: const EdgeInsets.all(80),
-              child: SizedBox(
-                width: double.infinity,
-                height: double.infinity,
-                child: Stack(
-                  children: [
-                    // Custom Stylized Map Grid Background
-                    CustomPaint(
-                      size: Size.infinite,
-                      painter: _MapGridPainter(),
+            // REAL OPENSTREETMAP WORLD MAP LAYER (WITH REAL GPS & ROTATION)
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: initialCenter,
+                initialZoom: _currentZoom,
+                initialRotation: 0.0,
+                minZoom: 3.0,
+                maxZoom: 18.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all,
+                ),
+                onPositionChanged: (position, hasGesture) {
+                  if (hasGesture) {
+                    setState(() {
+                      if (position.zoom != null) _currentZoom = position.zoom!;
+                      _currentRotation = position.rotation;
+                    });
+                  }
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.hanapgawa.app',
+                  tileProvider: CancellableNetworkTileProvider(),
+                ),
+
+                MarkerLayer(
+                  markers: [
+                    // REAL USER'S GPS LOCATION BLUE MARKER
+                    Marker(
+                      point: _userGpsLocation,
+                      width: 100,
+                      height: 70,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[900],
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                            ),
+                            child: const Text(
+                              'My GPS Location',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: Colors.blue[600],
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.blue.withAlpha(150),
+                                  blurRadius: 10,
+                                  spreadRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.my_location,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
-                    // Customer Location Pins with Money Rate per Hour Badge & Work Title
-                    ...widget.jobs.asMap().entries.map((entry) {
-                      final idx = entry.key;
-                      final job = entry.value;
+                    // Customer Job Markers
+                    ...widget.jobs.map((job) {
                       final isSelected = _activeJob?.id == job.id;
+                      final point = LatLng(job.customerLat, job.customerLng);
 
-                      // Compute simulated map coordinates inside container grid
-                      final double left = 30 + ((idx * 85 + 40) % 240).toDouble();
-                      final double top = 40 + ((idx * 65 + 30) % 180).toDouble();
-
-                      return Positioned(
-                        left: left,
-                        top: top,
+                      return Marker(
+                        point: point,
+                        width: 120,
+                        height: 75,
                         child: GestureDetector(
                           onTap: () {
                             setState(() {
                               _activeJob = job;
                             });
+                            _mapController.move(point, 15.0);
                             if (widget.onJobSelected != null) {
                               widget.onJobSelected!(job);
                             }
@@ -147,21 +258,16 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Rate Tag Banner above Pin
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
+                                  horizontal: 7,
+                                  vertical: 3,
                                 ),
                                 decoration: BoxDecoration(
                                   color: isSelected ? maroonColor : const Color(0xFF2E7D32),
                                   borderRadius: BorderRadius.circular(12),
                                   boxShadow: const [
-                                    BoxShadow(
-                                      color: Colors.black26,
-                                      blurRadius: 4,
-                                      offset: Offset(0, 2),
-                                    ),
+                                    BoxShadow(color: Colors.black26, blurRadius: 4),
                                   ],
                                 ),
                                 child: Row(
@@ -170,66 +276,42 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                                     const Icon(
                                       Icons.payments,
                                       color: Colors.amberAccent,
-                                      size: 14,
+                                      size: 13,
                                     ),
-                                    const SizedBox(width: 4),
+                                    const SizedBox(width: 3),
                                     Text(
                                       '₱${job.hourlyRate.toStringAsFixed(0)}/hr',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 11,
+                                        fontSize: 10,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-
                               const SizedBox(height: 2),
 
-                              // Location Pin Icon
                               AnimatedContainer(
                                 duration: const Duration(milliseconds: 250),
-                                width: isSelected ? 42 : 34,
-                                height: isSelected ? 42 : 34,
+                                width: isSelected ? 38 : 30,
+                                height: isSelected ? 38 : 30,
                                 decoration: BoxDecoration(
                                   color: isSelected ? maroonColor : Colors.red[700],
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2.5),
+                                  border: Border.all(color: Colors.white, width: 2),
                                   boxShadow: [
                                     BoxShadow(
                                       color: (isSelected ? maroonColor : Colors.red)
                                           .withAlpha(128),
-                                      blurRadius: 8,
-                                      spreadRadius: isSelected ? 3 : 1,
+                                      blurRadius: 6,
                                     ),
                                   ],
                                 ),
                                 child: Icon(
                                   _getCategoryIcon(job.workCategory),
                                   color: Colors.white,
-                                  size: isSelected ? 22 : 18,
-                                ),
-                              ),
-
-                              // Customer Name under pin
-                              Container(
-                                margin: const EdgeInsets.only(top: 2),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(230),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  job.customerName.split(' ').first,
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
-                                  ),
+                                  size: isSelected ? 20 : 16,
                                 ),
                               ),
                             ],
@@ -239,10 +321,10 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                     }),
                   ],
                 ),
-              ),
+              ],
             ),
 
-            // Map Header Control Bar
+            // Top Header Location Indicator
             Positioned(
               top: 10,
               left: 10,
@@ -258,13 +340,13 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.my_location, color: maroonColor, size: 18),
+                    const Icon(Icons.public, color: maroonColor, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _activeJob != null
-                            ? 'Customer Location: ${_activeJob!.customerAddress}'
-                            : 'Interactive Map — Customers in Need',
+                            ? 'Location: ${_activeJob!.customerAddress}'
+                            : 'Real Device GPS Map — Customer Jobs',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -280,7 +362,7 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        '${widget.jobs.length} Active Jobs',
+                        '${widget.jobs.length} Jobs',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
@@ -293,13 +375,61 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
               ),
             ),
 
-            // Floating Zoom In / Zoom Out Controls Bar
+            // Floating Controls Column (GPS My Location, Rotation Compass, Zoom +, Zoom -, Reset)
             Positioned(
               top: 54,
               right: 10,
               child: Column(
                 children: [
-                  // Zoom In Button (+)
+                  // My Current Real GPS Location Button
+                  Material(
+                    color: Colors.blue[800],
+                    shape: const CircleBorder(),
+                    elevation: 5,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _goToMyLocation,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: _isLoadingGps
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.my_location,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Map Rotation Compass Button
+                  Transform.rotate(
+                    angle: -_currentRotation * (3.141592653589793 / 180),
+                    child: Material(
+                      color: Colors.white,
+                      shape: const CircleBorder(),
+                      elevation: 4,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: _resetRotation,
+                        child: const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Icon(Icons.navigation, color: maroonColor, size: 20),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Zoom In (+) Button
                   Material(
                     color: Colors.white,
                     shape: const CircleBorder(),
@@ -315,7 +445,7 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                   ),
                   const SizedBox(height: 6),
 
-                  // Zoom Scale Badge
+                  // Zoom Level Badge
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
@@ -324,7 +454,7 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                       boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
                     ),
                     child: Text(
-                      '${(_currentZoomScale * 100).toInt()}%',
+                      'Z${_currentZoom.toInt()}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 10,
@@ -334,7 +464,7 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                   ),
                   const SizedBox(height: 6),
 
-                  // Zoom Out Button (-)
+                  // Zoom Out (-) Button
                   Material(
                     color: Colors.white,
                     shape: const CircleBorder(),
@@ -350,14 +480,14 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                   ),
                   const SizedBox(height: 6),
 
-                  // Recenter / Reset Zoom Button
+                  // Recenter Button
                   Material(
                     color: Colors.white,
                     shape: const CircleBorder(),
                     elevation: 4,
                     child: InkWell(
                       customBorder: const CircleBorder(),
-                      onTap: _resetZoom,
+                      onTap: _resetRecenter,
                       child: const Padding(
                         padding: EdgeInsets.all(8.0),
                         child: Icon(Icons.center_focus_strong, color: maroonColor, size: 18),
@@ -453,7 +583,6 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // Hourly Rate Highlight
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10,
@@ -473,7 +602,6 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                               ),
                             ),
 
-                            // View Full Job Details Button
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: maroonColor,
@@ -533,99 +661,4 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
     if (category.contains('Garden')) return Icons.grass;
     return Icons.work;
   }
-}
-
-// Custom Painter for Map Roads and Landmarks Grid
-class _MapGridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final roadPaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 14
-      ..style = PaintingStyle.stroke;
-
-    final roadBorderPaint = Paint()
-      ..color = const Color(0xFFD4C5B9)
-      ..strokeWidth = 18
-      ..style = PaintingStyle.stroke;
-
-    final secondaryRoadPaint = Paint()
-      ..color = Colors.white.withAlpha(204)
-      ..strokeWidth = 8
-      ..style = PaintingStyle.stroke;
-
-    final parkPaint = Paint()..color = const Color(0xFFCBE3C9);
-    final waterPaint = Paint()..color = const Color(0xFFA5C9EB);
-
-    // River / Water body
-    final waterPath = Path()
-      ..moveTo(0, size.height * 0.4)
-      ..cubicTo(
-        size.width * 0.3,
-        size.height * 0.25,
-        size.width * 0.6,
-        size.height * 0.55,
-        size.width,
-        size.height * 0.45,
-      )
-      ..lineTo(size.width, size.height * 0.55)
-      ..cubicTo(
-        size.width * 0.6,
-        size.height * 0.65,
-        size.width * 0.3,
-        size.height * 0.35,
-        0,
-        size.height * 0.5,
-      )
-      ..close();
-    canvas.drawPath(waterPath, waterPaint);
-
-    // Park green area
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * 0.1, 20, 90, 60),
-        const Radius.circular(12),
-      ),
-      parkPaint,
-    );
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * 0.65, size.height * 0.6, 110, 70),
-        const Radius.circular(12),
-      ),
-      parkPaint,
-    );
-
-    // Main Roads
-    final mainRoad1 = Path()
-      ..moveTo(0, size.height * 0.3)
-      ..lineTo(size.width, size.height * 0.8);
-
-    final mainRoad2 = Path()
-      ..moveTo(size.width * 0.4, 0)
-      ..lineTo(size.width * 0.4, size.height);
-
-    canvas.drawPath(mainRoad1, roadBorderPaint);
-    canvas.drawPath(mainRoad1, roadPaint);
-
-    canvas.drawPath(mainRoad2, roadBorderPaint);
-    canvas.drawPath(mainRoad2, roadPaint);
-
-    // Cross Secondary Roads
-    canvas.drawLine(
-      Offset(0, size.height * 0.75),
-      Offset(size.width, size.height * 0.2),
-      secondaryRoadPaint,
-    );
-
-    canvas.drawLine(
-      Offset(size.width * 0.8, 0),
-      Offset(size.width * 0.8, size.height),
-      secondaryRoadPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

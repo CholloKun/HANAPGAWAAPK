@@ -82,8 +82,8 @@ class CustomerModel {
     required this.phone,
     required this.birthday,
     required this.address,
-    this.latitude = 14.5995,
-    this.longitude = 120.9842,
+    this.latitude = 11.5606,
+    this.longitude = 124.3986,
   });
 
   Map<String, dynamic> toJson() => {
@@ -104,8 +104,8 @@ class CustomerModel {
         phone: json['phone'] ?? '',
         birthday: json['birthday'] ?? '',
         address: json['address'] ?? '',
-        latitude: (json['latitude'] as num?)?.toDouble() ?? 14.5995,
-        longitude: (json['longitude'] as num?)?.toDouble() ?? 120.9842,
+        latitude: (json['latitude'] as num?)?.toDouble() ?? 11.5606,
+        longitude: (json['longitude'] as num?)?.toDouble() ?? 124.3986,
       );
 }
 
@@ -140,8 +140,8 @@ class WorkerModel {
     this.rating = 4.8,
     this.completedJobs = 12,
     this.isAvailable = true,
-    this.latitude = 14.6010,
-    this.longitude = 120.9860,
+    this.latitude = 11.5610,
+    this.longitude = 124.3990,
   });
 
   Map<String, dynamic> toJson() => {
@@ -176,8 +176,8 @@ class WorkerModel {
         rating: (json['rating'] as num?)?.toDouble() ?? 5.0,
         completedJobs: (json['completed_jobs'] as num?)?.toInt() ?? 0,
         isAvailable: json['is_available'] ?? true,
-        latitude: (json['latitude'] as num?)?.toDouble() ?? 14.6010,
-        longitude: (json['longitude'] as num?)?.toDouble() ?? 120.9860,
+        latitude: (json['latitude'] as num?)?.toDouble() ?? 11.5610,
+        longitude: (json['longitude'] as num?)?.toDouble() ?? 124.3990,
       );
 }
 
@@ -245,8 +245,8 @@ class JobBooking {
         customerName: json['customer_name'] ?? 'Customer',
         customerPhone: json['customer_phone'] ?? '',
         customerAddress: json['customer_address'] ?? '',
-        customerLat: (json['customer_lat'] as num?)?.toDouble() ?? 14.5995,
-        customerLng: (json['customer_lng'] as num?)?.toDouble() ?? 120.9842,
+        customerLat: (json['customer_lat'] as num?)?.toDouble() ?? 11.5606,
+        customerLng: (json['customer_lng'] as num?)?.toDouble() ?? 124.3986,
         workCategory: json['work_category'] ?? 'General Repair',
         title: json['title'] ?? 'Job Request',
         workDetails: json['work_details'] ?? '',

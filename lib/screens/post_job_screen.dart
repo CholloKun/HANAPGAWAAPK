@@ -25,7 +25,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   late String _selectedCategory;
   final _titleCtrl = TextEditingController();
   final _detailsCtrl = TextEditingController();
-  final _addressCtrl = TextEditingController(text: 'Sampaloc, Manila');
+  final _addressCtrl = TextEditingController(text: 'Naval, Biliran, Philippines');
   late TextEditingController _rateCtrl;
   final _hoursCtrl = TextEditingController(text: '3.0');
 

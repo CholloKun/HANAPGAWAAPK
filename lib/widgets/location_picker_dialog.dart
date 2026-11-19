@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
+import 'package:latlong2/latlong.dart';
+import '../services/location_service.dart';
 
 class LocationPickerDialog extends StatefulWidget {
   final String initialAddress;
 
   const LocationPickerDialog({
     super.key,
-    this.initialAddress = 'Sampaloc, Manila',
+    this.initialAddress = 'Naval, Biliran, Philippines',
   });
 
   static Future<String?> show(BuildContext context, {String initialAddress = ''}) {
     return showDialog<String>(
       context: context,
       builder: (_) => LocationPickerDialog(
-        initialAddress: initialAddress.isNotEmpty ? initialAddress : 'Sampaloc, Manila',
+        initialAddress: initialAddress.isNotEmpty
+            ? initialAddress
+            : 'Naval, Biliran, Philippines',
       ),
     );
   }
@@ -23,65 +29,170 @@ class LocationPickerDialog extends StatefulWidget {
 
 class _LocationPickerDialogState extends State<LocationPickerDialog> {
   late TextEditingController _addressCtrl;
-  Offset _pinPosition = const Offset(160, 100);
+  late final MapController _mapController;
 
-  final TransformationController _transformationController = TransformationController();
-  double _currentZoomScale = 1.0;
+  // Real device GPS position
+  LatLng _selectedPoint = const LatLng(11.5606, 124.3986);
+  double _currentZoom = 15.0;
+  double _currentRotation = 0.0;
+  bool _isLoadingGps = false;
 
-  final List<Map<String, String>> _popularLocations = [
-    {'name': 'Sampaloc, Manila', 'full': '123 España Blvd, Sampaloc, Manila'},
-    {'name': 'Katipunan, QC', 'full': '45 Katipunan Ave, Loyola Heights, Quezon City'},
-    {'name': 'Ayala, Makati', 'full': '78 Ayala Ave, Bel-Air, Makati City'},
-    {'name': 'Shaw Blvd, Mandaluyong', 'full': '99 Shaw Blvd, Highway Hills, Mandaluyong'},
-    {'name': 'BGC, Taguig', 'full': '26th Street, Bonifacio Global City, Taguig'},
-    {'name': 'Ortigas, Pasig', 'full': 'Julia Vargas Ave, Ortigas Center, Pasig City'},
-    {'name': 'Diliman, QC', 'full': 'Commonwealth Ave, Diliman, Quezon City'},
+  final List<Map<String, dynamic>> _popularLocations = [
+    {
+      'name': 'Naval Center',
+      'full': 'Naval, Biliran, Philippines',
+      'lat': 11.5606,
+      'lng': 124.3986,
+    },
+    {
+      'name': 'Brgy. Smo. Rosario',
+      'full': 'Brgy. Smo. Rosario, Naval, Biliran, Philippines',
+      'lat': 11.5615,
+      'lng': 124.3975,
+    },
+    {
+      'name': 'Brgy. P.I. Garcia',
+      'full': 'Brgy. P.I. Garcia, Naval, Biliran, Philippines',
+      'lat': 11.5640,
+      'lng': 124.3960,
+    },
+    {
+      'name': 'Brgy. Atipolo',
+      'full': 'Brgy. Atipolo, Naval, Biliran, Philippines',
+      'lat': 11.5580,
+      'lng': 124.4020,
+    },
+    {
+      'name': 'Brgy. Agpangi',
+      'full': 'Brgy. Agpangi, Naval, Biliran, Philippines',
+      'lat': 11.5720,
+      'lng': 124.3910,
+    },
+    {
+      'name': 'Brgy. Calumpang',
+      'full': 'Brgy. Calumpang, Naval, Biliran, Philippines',
+      'lat': 11.5510,
+      'lng': 124.3940,
+    },
+    {
+      'name': 'Brgy. Caraycaray',
+      'full': 'Brgy. Caraycaray, Naval, Biliran, Philippines',
+      'lat': 11.5530,
+      'lng': 124.4080,
+    },
+    {
+      'name': 'BiPSU Main Campus',
+      'full': 'BiPSU Main Campus, Naval, Biliran, Philippines',
+      'lat': 11.5660,
+      'lng': 124.4005,
+    },
   ];
 
   @override
   void initState() {
     super.initState();
-    _addressCtrl = TextEditingController(text: widget.initialAddress);
-    _transformationController.addListener(_onZoomChanged);
+    _mapController = MapController();
+    _addressCtrl = TextEditingController(
+      text: widget.initialAddress.isNotEmpty
+          ? widget.initialAddress
+          : 'Naval, Biliran, Philippines',
+    );
+    _initDeviceLocation();
   }
 
-  @override
-  void dispose() {
-    _transformationController.removeListener(_onZoomChanged);
-    _transformationController.dispose();
-    super.dispose();
-  }
-
-  void _onZoomChanged() {
-    final double scale = _transformationController.value.getMaxScaleOnAxis();
+  Future<void> _initDeviceLocation() async {
+    final realLoc = await LocationService().getCurrentDeviceLocation();
     if (mounted) {
       setState(() {
-        _currentZoomScale = scale;
+        _selectedPoint = realLoc;
       });
     }
   }
 
-  void _zoomIn() {
-    final double newScale = (_currentZoomScale * 1.3).clamp(0.8, 3.5);
-    _setZoom(newScale);
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
   }
 
-  void _zoomOut() {
-    final double newScale = (_currentZoomScale / 1.3).clamp(0.8, 3.5);
-    _setZoom(newScale);
-  }
+  // Automatic address resolver on pin placement
+  void _updateAddressFromPoint(LatLng point, {String? customLabel}) {
+    String resolvedAddress = customLabel ?? '';
+    const distanceThreshold = 0.008; // ~800m radius
 
-  void _resetZoom() {
-    _transformationController.value = Matrix4.identity();
+    if (resolvedAddress.isEmpty) {
+      for (final loc in _popularLocations) {
+        final double lat = loc['lat'] as double;
+        final double lng = loc['lng'] as double;
+        final double diff = (lat - point.latitude).abs() + (lng - point.longitude).abs();
+        if (diff < distanceThreshold) {
+          resolvedAddress = loc['full'] as String;
+          break;
+        }
+      }
+    }
+
+    if (resolvedAddress.isEmpty) {
+      resolvedAddress =
+          'Naval, Biliran, Philippines (${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)})';
+    }
+
     setState(() {
-      _currentZoomScale = 1.0;
+      _selectedPoint = point;
+      _addressCtrl.text = resolvedAddress;
     });
   }
 
-  void _setZoom(double targetScale) {
-    _transformationController.value = Matrix4.diagonal3Values(targetScale, targetScale, 1.0);
+  Future<void> _goToMyLocation() async {
     setState(() {
-      _currentZoomScale = targetScale;
+      _isLoadingGps = true;
+    });
+
+    final realLoc = await LocationService().getCurrentDeviceLocation();
+
+    if (mounted) {
+      _updateAddressFromPoint(
+        realLoc,
+        customLabel:
+            'My Device GPS Location (${realLoc.latitude.toStringAsFixed(4)}, ${realLoc.longitude.toStringAsFixed(4)})',
+      );
+      setState(() {
+        _currentZoom = 16.0;
+        _isLoadingGps = false;
+      });
+      _mapController.move(realLoc, 16.0);
+    }
+  }
+
+  void _zoomIn() {
+    setState(() {
+      _currentZoom = (_currentZoom + 1).clamp(3.0, 18.0);
+      _mapController.move(_selectedPoint, _currentZoom);
+    });
+  }
+
+  void _zoomOut() {
+    setState(() {
+      _currentZoom = (_currentZoom - 1).clamp(3.0, 18.0);
+      _mapController.move(_selectedPoint, _currentZoom);
+    });
+  }
+
+  void _resetRecenter() {
+    setState(() {
+      _currentZoom = 15.0;
+      _selectedPoint = const LatLng(11.5606, 124.3986);
+      _addressCtrl.text = 'Naval, Biliran, Philippines';
+      _mapController.move(_selectedPoint, _currentZoom);
+      _mapController.rotate(0.0);
+      _currentRotation = 0.0;
+    });
+  }
+
+  void _resetRotation() {
+    setState(() {
+      _mapController.rotate(0.0);
+      _currentRotation = 0.0;
     });
   }
 
@@ -98,21 +209,21 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header
+              // Header Banner
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 color: maroonColor,
                 child: const Row(
                   children: [
-                    Icon(Icons.map, color: Colors.white),
+                    Icon(Icons.public, color: Colors.white),
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Select Location on Map',
+                        'Select Real Device GPS Location',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: 15,
                         ),
                       ),
                     ),
@@ -120,75 +231,83 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                 ),
               ),
 
-              // Interactive Zoomable Map Simulation with Pin
+              // OpenStreetMap Map Layer with Real Device GPS & Gestures
               Container(
-                height: 240,
+                height: 270,
                 color: const Color(0xFFEFEBE7),
                 child: Stack(
                   children: [
-                    InteractiveViewer(
-                      transformationController: _transformationController,
-                      minScale: 0.8,
-                      maxScale: 3.5,
-                      child: GestureDetector(
-                        onTapDown: (details) {
-                          setState(() {
-                            _pinPosition = details.localPosition;
-                          });
-                        },
-                        child: SizedBox(
-                          width: double.infinity,
-                          height: double.infinity,
-                          child: Stack(
-                            children: [
-                              CustomPaint(
-                                size: Size.infinite,
-                                painter: _MapRoadsPainter(),
-                              ),
-
-                              // Location Pin
-                              Positioned(
-                                left: _pinPosition.dx - 20,
-                                top: _pinPosition.dy - 40,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: maroonColor,
-                                        borderRadius: BorderRadius.circular(10),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Colors.black26,
-                                            blurRadius: 4,
-                                          ),
-                                        ],
-                                      ),
-                                      child: const Text(
-                                        'Selected Pin',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    const Icon(
-                                      Icons.location_on,
-                                      color: maroonColor,
-                                      size: 40,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                    FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _selectedPoint,
+                        initialZoom: _currentZoom,
+                        initialRotation: 0.0,
+                        minZoom: 3.0,
+                        maxZoom: 18.0,
+                        interactionOptions: const InteractionOptions(
+                          flags: InteractiveFlag.all,
                         ),
+                        onPositionChanged: (position, hasGesture) {
+                          if (hasGesture) {
+                            setState(() {
+                              if (position.zoom != null) _currentZoom = position.zoom!;
+                              _currentRotation = position.rotation;
+                            });
+                          }
+                        },
+                        onTap: (tapPosition, point) {
+                          _updateAddressFromPoint(point);
+                        },
                       ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.hanapgawa.app',
+                          tileProvider: CancellableNetworkTileProvider(),
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            // PINNED TARGET LOCATION MARKER
+                            Marker(
+                              point: _selectedPoint,
+                              width: 90,
+                              height: 65,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: maroonColor,
+                                      borderRadius: BorderRadius.circular(8),
+                                      boxShadow: const [
+                                        BoxShadow(color: Colors.black26, blurRadius: 4),
+                                      ],
+                                    ),
+                                    child: const Text(
+                                      'Pinned Target',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.location_on,
+                                    color: maroonColor,
+                                    size: 38,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
 
                     // Instruction Overlay Banner
@@ -202,16 +321,16 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.92),
+                          color: Colors.white.withAlpha(235),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Row(
                           children: [
-                            Icon(Icons.touch_app, size: 16, color: maroonColor),
+                            Icon(Icons.gps_fixed, size: 16, color: maroonColor),
                             SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                'Tap to place pin. Pinch or tap +/- to zoom.',
+                                'Tap blue GPS button to use your live device location!',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
@@ -224,13 +343,62 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                       ),
                     ),
 
-                    // Floating Zoom Controls (+ / - / Reset)
+                    // Floating Controls Column (GPS My Location, Rotation Compass, Zoom +, Zoom -, Reset)
                     Positioned(
                       bottom: 10,
                       right: 10,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // My Current Device Real GPS Button
+                          Material(
+                            color: Colors.blue[800],
+                            shape: const CircleBorder(),
+                            elevation: 5,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _goToMyLocation,
+                              child: Padding(
+                                padding: const EdgeInsets.all(7.0),
+                                child: _isLoadingGps
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.my_location,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+
+                          // Compass Rotation Reset Button
+                          Transform.rotate(
+                            angle: -_currentRotation * (3.141592653589793 / 180),
+                            child: Material(
+                              color: Colors.white,
+                              shape: const CircleBorder(),
+                              elevation: 4,
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: _resetRotation,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(7.0),
+                                  child: Icon(Icons.navigation, color: maroonColor, size: 18),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+
+                          // Zoom In (+) Button
                           Material(
                             color: Colors.white,
                             shape: const CircleBorder(),
@@ -245,6 +413,8 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                             ),
                           ),
                           const SizedBox(height: 4),
+
+                          // Zoom Scale Badge
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                             decoration: BoxDecoration(
@@ -252,7 +422,7 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              '${(_currentZoomScale * 100).toInt()}%',
+                              'Z${_currentZoom.toInt()}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 9,
@@ -261,6 +431,8 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                             ),
                           ),
                           const SizedBox(height: 4),
+
+                          // Zoom Out (-) Button
                           Material(
                             color: Colors.white,
                             shape: const CircleBorder(),
@@ -275,13 +447,15 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                             ),
                           ),
                           const SizedBox(height: 4),
+
+                          // Recenter Button
                           Material(
                             color: Colors.white,
                             shape: const CircleBorder(),
                             elevation: 4,
                             child: InkWell(
                               customBorder: const CircleBorder(),
-                              onTap: _resetZoom,
+                              onTap: _resetRecenter,
                               child: const Padding(
                                 padding: EdgeInsets.all(6.0),
                                 child: Icon(Icons.center_focus_strong, color: maroonColor, size: 16),
@@ -295,14 +469,14 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                 ),
               ),
 
-              // Popular Location Presets
+              // Popular Location Presets for Naval, Biliran
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Quick Location Presets:',
+                      'Naval, Biliran Location Presets:',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -319,15 +493,18 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                             padding: const EdgeInsets.only(right: 6),
                             child: ActionChip(
                               label: Text(
-                                loc['name']!,
+                                loc['name'] as String,
                                 style: const TextStyle(fontSize: 11),
                               ),
-                              backgroundColor: maroonColor.withOpacity(0.08),
+                              backgroundColor: maroonColor.withAlpha(20),
                               labelStyle: const TextStyle(color: maroonColor),
                               onPressed: () {
-                                setState(() {
-                                  _addressCtrl.text = loc['full']!;
-                                });
+                                final point = LatLng(
+                                  loc['lat'] as double,
+                                  loc['lng'] as double,
+                                );
+                                _updateAddressFromPoint(point);
+                                _mapController.move(point, 15.5);
                               },
                             ),
                           );
@@ -336,13 +513,14 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Manual / Selected Address TextFormField
+                    // Selected Address TextFormField (Auto-updated on pin tap or My Location!)
                     TextFormField(
                       controller: _addressCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Selected Address / Location',
+                        labelText: 'Pinned Address / Location (Auto-filled)',
                         prefixIcon: Icon(Icons.pin_drop, color: maroonColor),
                         border: OutlineInputBorder(),
+                        helperText: 'Auto-updates when you tap map or blue GPS button',
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -383,62 +561,4 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
       ),
     );
   }
-}
-
-class _MapRoadsPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final roadPaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 10
-      ..style = PaintingStyle.stroke;
-
-    final waterPaint = Paint()..color = const Color(0xFFA5C9EB);
-    final parkPaint = Paint()..color = const Color(0xFFCBE3C9);
-
-    // Park
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(10, 10, 80, 50),
-        const Radius.circular(8),
-      ),
-      parkPaint,
-    );
-
-    // River
-    final waterPath = Path()
-      ..moveTo(0, size.height * 0.7)
-      ..quadraticBezierTo(
-        size.width * 0.5,
-        size.height * 0.5,
-        size.width,
-        size.height * 0.8,
-      )
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(waterPath, waterPaint);
-
-    // Roads
-    canvas.drawLine(
-      Offset(0, size.height * 0.3),
-      Offset(size.width, size.height * 0.3),
-      roadPaint,
-    );
-
-    canvas.drawLine(
-      Offset(size.width * 0.4, 0),
-      Offset(size.width * 0.4, size.height),
-      roadPaint,
-    );
-
-    canvas.drawLine(
-      Offset(size.width * 0.75, 0),
-      Offset(size.width * 0.75, size.height),
-      roadPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

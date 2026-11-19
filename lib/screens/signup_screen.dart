@@ -23,7 +23,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
-  final _addressCtrl = TextEditingController();
+  final _addressCtrl = TextEditingController(text: 'Naval, Biliran, Philippines');
   final _passwordCtrl = TextEditingController();
 
   // Customer specific fields
