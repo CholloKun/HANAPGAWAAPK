@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,8 +18,9 @@ class CustomerHomeScreen extends StatefulWidget {
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
 }
 
-class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTickerProviderStateMixin {
   final DataService _dataService = DataService();
+  late TabController _tabController;
   String _selectedCategory = 'All';
   String _bookingStatusFilter = 'All';
 
@@ -31,6 +33,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _dataService.addListener(_onStateChange);
     _initProfileControllers();
   }
@@ -45,6 +51,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _dataService.removeListener(_onStateChange);
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
@@ -66,6 +73,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
+  Future<void> _refreshEntirePage() async {
+    await _dataService.syncWithSupabase();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Hanap Gawa page refreshed successfully!'),
+          backgroundColor: Color(0xFF800000),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   Future<void> _pickAvatarImage() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
@@ -74,14 +94,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
 
     if (pickedFile != null) {
-      _dataService.updateCustomerProfile(
+      await _dataService.updateCustomerProfile(
         profileImagePath: pickedFile.path,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Profile picture updated successfully!'),
+            content: Text('Profile picture updated and saved permanently!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -107,6 +127,124 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
+  void _openNotificationsModal(BuildContext context) {
+    const maroonColor = Color(0xFF800000);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final notifs = _dataService.notifications;
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.75,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.notifications, color: maroonColor, size: 22),
+                          SizedBox(width: 8),
+                          Text(
+                            'Notifications & Alerts',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: maroonColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: notifs.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No notifications yet.',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: notifs.length,
+                            itemBuilder: (context, index) {
+                              final n = notifs[index];
+                              return Card(
+                                elevation: n.isRead ? 1 : 3,
+                                color: n.isRead ? Colors.white : maroonColor.withAlpha(15),
+                                margin: const EdgeInsets.only(bottom: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: n.isRead ? Colors.grey : maroonColor,
+                                    child: Icon(
+                                      n.isRead ? Icons.notifications_none : Icons.notifications_active,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    n.title,
+                                    style: TextStyle(
+                                      fontWeight: n.isRead ? FontWeight.normal : FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Text(n.message, style: const TextStyle(fontSize: 12)),
+                                      const SizedBox(height: 4),
+                                      Text(n.createdAt, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                    ],
+                                  ),
+                                  trailing: !n.isRead
+                                      ? IconButton(
+                                          icon: const Icon(Icons.check_circle_outline, color: maroonColor),
+                                          tooltip: 'Mark as read',
+                                          onPressed: () {
+                                            _dataService.markNotificationAsRead(n.id);
+                                            setModalState(() {});
+                                          },
+                                        )
+                                      : const Icon(Icons.check, color: Colors.green, size: 18),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _openCustomerProfileModal(BuildContext context, CustomerModel customer) {
     const maroonColor = Color(0xFF800000);
     final updatedCustomer = _dataService.currentCustomer ?? customer;
@@ -124,8 +262,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             final currentCust = _dataService.currentCustomer ?? updatedCustomer;
-            final hasAvatar = currentCust.profileImagePath != null &&
-                currentCust.profileImagePath!.isNotEmpty;
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.85,
@@ -142,7 +278,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               child: SingleChildScrollView(
                 child: Column(
                   children: [
-                    // Handle bar
                     Container(
                       width: 40,
                       height: 4,
@@ -175,7 +310,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     // Avatar Circle with Camera Badge
                     Stack(
                       children: [
-                        _buildAvatarImage(updatedCustomer.profileImagePath, radius: 50, fallbackInitial: updatedCustomer.name),
+                        _buildAvatarImage(currentCust.profileImagePath, radius: 50, fallbackInitial: currentCust.name),
                         Positioned(
                           right: 0,
                           bottom: 0,
@@ -201,7 +336,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     const SizedBox(height: 12),
 
                     Text(
-                      updatedCustomer.name,
+                      currentCust.name,
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -215,7 +350,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
-                        'Verified Customer Account',
+                        'Verified Customer Account (Cached Locally)',
                         style: TextStyle(
                           color: maroonColor,
                           fontWeight: FontWeight.bold,
@@ -243,7 +378,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Information Form
                     TextFormField(
                       controller: _nameCtrl,
                       decoration: _inputDecoration('Full Name', Icons.person_outline),
@@ -251,7 +385,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     const SizedBox(height: 12),
 
                     TextFormField(
-                      initialValue: updatedCustomer.email,
+                      initialValue: currentCust.email,
                       readOnly: true,
                       decoration: _inputDecoration('Email Address (Account)', Icons.email_outlined),
                     ),
@@ -324,7 +458,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           Navigator.pop(modalContext);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Profile information saved successfully!'),
+                              content: Text('Profile information saved and cached successfully!'),
                               backgroundColor: Colors.green,
                             ),
                           );
@@ -360,145 +494,173 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         );
 
     final filteredWorkers = _dataService.getWorkersByCategory(_selectedCategory);
+    final unreadCount = _dataService.unreadNotificationsCount;
 
-    final hasAvatar = currentCustomer.profileImagePath != null &&
-        currentCustomer.profileImagePath!.isNotEmpty;
-
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
-        appBar: AppBar(
-          backgroundColor: maroonColor,
-          elevation: 0,
-          toolbarHeight: 70,
-          title: Row(
-            children: [
-              // Top Left Corner Profile Circle Avatar (Clicking opens Profile Modal)
-              GestureDetector(
-                onTap: () => _openCustomerProfileModal(context, currentCustomer),
-                child: Stack(
-                  children: [
-                    _buildAvatarImage(currentCustomer.profileImagePath, radius: 22, fallbackInitial: currentCustomer.name),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                          color: Colors.amber,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.edit, color: Colors.black87, size: 10),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        backgroundColor: maroonColor,
+        elevation: 0,
+        toolbarHeight: 70,
+        title: Row(
+          children: [
+            GestureDetector(
+              onTap: () => _openCustomerProfileModal(context, currentCustomer),
+              child: Stack(
+                children: [
+                  _buildAvatarImage(currentCustomer.profileImagePath, radius: 22, fallbackInitial: currentCustomer.name),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Colors.amber,
+                        shape: BoxShape.circle,
                       ),
+                      child: const Icon(Icons.edit, color: Colors.black87, size: 10),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _openCustomerProfileModal(context, currentCustomer),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hello, ${currentCustomer.name.split(' ').first}! 👋',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const Text(
+                      'Tap profile icon to view/edit info',
+                      style: TextStyle(color: Colors.white70, fontSize: 11),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _openCustomerProfileModal(context, currentCustomer),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hello, ${currentCustomer.name.split(' ').first}! 👋',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+            ),
+          ],
+        ),
+        actions: [
+          // Full-Page Refresh Action
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: 'Refresh Page',
+            onPressed: _refreshEntirePage,
+          ),
+          // Notification Bell Icon with Unread Badge Counter
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                tooltip: 'Notifications',
+                onPressed: () => _openNotificationsModal(context),
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.amber,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+                    child: Text(
+                      '$unreadCount',
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
                       ),
-                      const Text(
-                        'Tap profile icon to view/edit info',
-                        style: TextStyle(color: Colors.white70, fontSize: 11),
-                      ),
-                    ],
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.person, color: Colors.white),
-              tooltip: 'View Profile',
-              onPressed: () => _openCustomerProfileModal(context, currentCustomer),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            tooltip: 'Logout',
+            onPressed: () {
+              _dataService.logout();
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.amber,
+          indicatorWeight: 3,
+          labelColor: Colors.amber,
+          unselectedLabelColor: Colors.white70,
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          tabs: const [
+            Tab(
+              icon: Icon(Icons.engineering_outlined),
+              text: 'Hire Workers',
             ),
-            IconButton(
-              icon: const Icon(Icons.logout, color: Colors.white),
-              tooltip: 'Logout',
-              onPressed: () {
-                _dataService.logout();
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                );
-              },
+            Tab(
+              icon: Icon(Icons.map_outlined),
+              text: 'Worker Map',
+            ),
+            Tab(
+              icon: Icon(Icons.assignment_outlined),
+              text: 'My Bookings',
             ),
           ],
-          bottom: const TabBar(
-            indicatorColor: Colors.amber,
-            indicatorWeight: 3,
-            labelColor: Colors.amber,
-            unselectedLabelColor: Colors.white70,
-            labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-            tabs: [
-              Tab(
-                icon: Icon(Icons.engineering_outlined),
-                text: 'Hire Workers',
-              ),
-              Tab(
-                icon: Icon(Icons.map_outlined),
-                text: 'Worker Map',
-              ),
-              Tab(
-                icon: Icon(Icons.assignment_outlined),
-                text: 'My Bookings',
-              ),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            // TAB 1: Hire Skilled Workers
-            _buildWorkersTab(maroonColor, filteredWorkers),
-
-            // TAB 2: Interactive Location Map
-            _buildMapTab(maroonColor),
-
-            // TAB 3: Customer Job Bookings Status
-            _buildBookingsTab(maroonColor, currentCustomer),
-          ],
-        ),
-        floatingActionButton: FloatingActionButton.extended(
-          backgroundColor: maroonColor,
-          elevation: 4,
-          icon: const Icon(Icons.add_task, color: Colors.white),
-          label: const Text(
-            'Post Job Request',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PostJobScreen()),
-            );
-          },
         ),
       ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildWorkersTab(maroonColor, filteredWorkers),
+          _buildMapTab(maroonColor, currentCustomer),
+          _buildBookingsTab(maroonColor, currentCustomer),
+        ],
+      ),
+      floatingActionButton: _tabController.index == 1
+          ? FloatingActionButton.extended(
+              backgroundColor: maroonColor,
+              elevation: 4,
+              icon: const Icon(Icons.add_task, color: Colors.white),
+              label: const Text(
+                'Post Job Request',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PostJobScreen()),
+                );
+              },
+            )
+          : null,
     );
   }
 
-  // TAB 1: Browse Skilled Workers by Category & Credentials
   Widget _buildWorkersTab(Color maroonColor, List<WorkerModel> workersList) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Banner Header
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -555,7 +717,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ),
           const SizedBox(height: 10),
 
-          // Categories Horizontal Selector
           SizedBox(
             height: 42,
             child: ListView(
@@ -592,7 +753,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Worker Cards List (Shows empty state when no worker is registered)
           if (workersList.isEmpty)
             Card(
               elevation: 2,
@@ -760,7 +920,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
             const Divider(height: 24),
 
-            // Credentials & Permit Info
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -805,7 +964,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Book Worker Button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -847,8 +1005,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  // TAB 2: Map Tab showing customer locations, hourly rate badges & details
-  Widget _buildMapTab(Color maroonColor) {
+  Widget _buildMapTab(Color maroonColor, CustomerModel customer) {
+    final customerJobs = _dataService.jobs.where((j) => j.customerId == customer.id).toList();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -870,7 +1029,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Real-Time Job Request Map',
+                        'Your Real-Time Job Request Map',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -879,7 +1038,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       ),
                       const SizedBox(height: 2),
                       const Text(
-                        'Tap any pin on the map to inspect rate details (₱/hr) & job descriptions.',
+                        'Tap your job pin on the map to inspect status, rate (₱/hr) & details.',
                         style: TextStyle(fontSize: 12, color: Colors.black87),
                       ),
                     ],
@@ -890,9 +1049,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Custom Map Widget
           InteractiveMapWidget(
-            jobs: _dataService.jobs,
+            jobs: customerJobs,
             workers: _dataService.workers,
             height: 460,
           ),
@@ -901,9 +1059,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  // TAB 3: Customer Job Bookings Status
   Widget _buildBookingsTab(Color maroonColor, CustomerModel customer) {
-    final allJobs = _dataService.jobs;
+    final allJobs = _dataService.jobs.where((j) => j.customerId == customer.id).toList();
 
     final jobs = allJobs.where((j) {
       if (_bookingStatusFilter == 'All') return true;
@@ -912,7 +1069,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
     return Column(
       children: [
-        // Status Filter Bar
         Container(
           color: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -967,7 +1123,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'Tap "Post Job Request" below to request a service!',
+                        'Tap "Post Job Request" on the Map tab to request a service!',
                         style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
@@ -1120,7 +1276,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final hasAvatar = imagePath != null && imagePath.isNotEmpty;
 
     if (hasAvatar) {
-      if (kIsWeb || imagePath.startsWith('http') || imagePath.startsWith('blob:') || imagePath.startsWith('assets/')) {
+      if (imagePath.startsWith('data:image')) {
+        try {
+          final base64Str = imagePath.split(',').last;
+          final bytes = base64Decode(base64Str);
+          return CircleAvatar(
+            radius: radius,
+            backgroundColor: Colors.white,
+            backgroundImage: MemoryImage(bytes),
+          );
+        } catch (e) {
+          // Fallback
+        }
+      } else if (kIsWeb || imagePath.startsWith('http') || imagePath.startsWith('blob:') || imagePath.startsWith('assets/')) {
         return CircleAvatar(
           radius: radius,
           backgroundColor: Colors.white,

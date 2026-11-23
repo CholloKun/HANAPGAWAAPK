@@ -336,3 +336,57 @@ class JobBooking {
     );
   }
 }
+
+class NotificationModel {
+  final String id;
+  final String userId;
+  final String title;
+  final String message;
+  final bool isRead;
+  final String createdAt;
+
+  NotificationModel({
+    required this.id,
+    required this.userId,
+    required this.title,
+    required this.message,
+    this.isRead = false,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'title': title,
+        'message': message,
+        'is_read': isRead,
+        'created_at': createdAt,
+      };
+
+  factory NotificationModel.fromJson(Map<String, dynamic> json) => NotificationModel(
+        id: json['id'] ?? '',
+        userId: json['user_id'] ?? '',
+        title: json['title'] ?? '',
+        message: json['message'] ?? '',
+        isRead: json['is_read'] ?? false,
+        createdAt: json['created_at'] ?? '',
+      );
+
+  NotificationModel copyWith({
+    String? id,
+    String? userId,
+    String? title,
+    String? message,
+    bool? isRead,
+    String? createdAt,
+  }) {
+    return NotificationModel(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      title: title ?? this.title,
+      message: message ?? this.message,
+      isRead: isRead ?? this.isRead,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+}

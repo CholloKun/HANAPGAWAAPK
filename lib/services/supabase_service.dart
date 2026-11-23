@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS public.customers (
     address TEXT,
     latitude DOUBLE PRECISION DEFAULT 14.5995,
     longitude DOUBLE PRECISION DEFAULT 120.9842,
+    profile_image_path TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -98,21 +99,34 @@ CREATE TABLE IF NOT EXISTS public.job_bookings (
     work_details TEXT NOT NULL,
     hourly_rate DOUBLE PRECISION NOT NULL,
     estimated_hours DOUBLE PRECISION DEFAULT 2.0,
+    workers_needed INTEGER DEFAULT 1,
     status TEXT DEFAULT 'Pending',
     assigned_worker_id TEXT,
     assigned_worker_name TEXT,
+    cancellation_reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 4. Create Notifications Table
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 ''';
 
   // --- FETCH JOBS FROM SUPABASE ---
-  Future<List<JobBooking>> fetchJobs() async {
+  Future<List<JobBooking>> fetchJobs({String? customerId}) async {
     if (!_isInitialized || client == null) return [];
     try {
-      final response = await client!
-          .from('job_bookings')
-          .select()
-          .order('created_at', ascending: false);
+      var query = client!.from('job_bookings').select();
+      if (customerId != null) {
+        query = query.eq('customer_id', customerId);
+      }
+      final response = await query.order('created_at', ascending: false);
       final List data = response as List;
       return data.map((json) => JobBooking.fromJson(json)).toList();
     } catch (e) {
@@ -202,6 +216,19 @@ CREATE TABLE IF NOT EXISTS public.job_bookings (
     }
   }
 
+  // --- DELETE JOB FROM SUPABASE (Permanent Deletion) ---
+  Future<bool> deleteJob(String jobId) async {
+    if (!_isInitialized || client == null) return false;
+    try {
+      await client!.from('job_bookings').delete().eq('id', jobId);
+      if (kDebugMode) print('Job $jobId permanently deleted from Supabase.');
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('Error deleting job from Supabase: $e');
+      return false;
+    }
+  }
+
   // --- UPDATE JOB STATUS ---
   Future<bool> updateJobStatus(
     String jobId,
@@ -245,6 +272,50 @@ CREATE TABLE IF NOT EXISTS public.job_bookings (
       return true;
     } catch (e) {
       if (kDebugMode) print('Error inserting customer to Supabase: $e');
+      return false;
+    }
+  }
+
+  // --- FETCH NOTIFICATIONS FROM SUPABASE ---
+  Future<List<NotificationModel>> fetchNotifications(String userId) async {
+    if (!_isInitialized || client == null) return [];
+    try {
+      final response = await client!
+          .from('notifications')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+      final List data = response as List;
+      return data.map((json) => NotificationModel.fromJson(json)).toList();
+    } catch (e) {
+      if (kDebugMode) print('Error fetching notifications from Supabase: $e');
+      return [];
+    }
+  }
+
+  // --- SAVE NOTIFICATION TO SUPABASE ---
+  Future<bool> saveNotification(NotificationModel notification) async {
+    if (!_isInitialized || client == null) return false;
+    try {
+      await client!.from('notifications').upsert(notification.toJson());
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('Error saving notification to Supabase: $e');
+      return false;
+    }
+  }
+
+  // --- MARK NOTIFICATION AS READ ---
+  Future<bool> markNotificationAsRead(String notificationId) async {
+    if (!_isInitialized || client == null) return false;
+    try {
+      await client!
+          .from('notifications')
+          .update({'is_read': true})
+          .eq('id', notificationId);
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('Error marking notification as read in Supabase: $e');
       return false;
     }
   }

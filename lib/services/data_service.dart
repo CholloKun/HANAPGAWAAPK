@@ -1,6 +1,9 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_models.dart';
 import 'supabase_service.dart';
 
@@ -23,17 +26,40 @@ class DataService extends ChangeNotifier {
 
   bool get isLoggedIn => _currentCustomer != null || _currentWorker != null;
 
-  // Sync jobs from Supabase on startup
-  Future<void> _syncWithSupabase() async {
-    final remoteJobs = await _supabaseService.fetchJobs();
-    if (remoteJobs.isNotEmpty) {
-      _jobs.clear();
-      _jobs.addAll(remoteJobs);
-      notifyListeners();
+  // Notifications List
+  final List<NotificationModel> _notifications = [];
+  List<NotificationModel> get notifications => List.unmodifiable(_notifications);
+
+  int get unreadNotificationsCount => _notifications.where((n) => !n.isRead).length;
+
+  // Sync jobs and notifications from Supabase
+  Future<void> syncWithSupabase() async {
+    final customerId = (_currentUserRole == UserRole.customer && _currentCustomer != null) ? _currentCustomer!.id : null;
+
+    final remoteJobs = await _supabaseService.fetchJobs(customerId: customerId);
+    _jobs.clear();
+    _jobs.addAll(remoteJobs);
+
+    final remoteWorkers = await _supabaseService.fetchWorkers();
+    if (remoteWorkers.isNotEmpty) {
+      _workers.clear();
+      _workers.addAll(remoteWorkers);
     }
+
+    if (_currentCustomer != null) {
+      final remoteNotifs = await _supabaseService.fetchNotifications(_currentCustomer!.id);
+      _notifications.clear();
+      _notifications.addAll(remoteNotifs);
+    }
+
+    notifyListeners();
   }
 
-  // Registered Skilled Workers (Starts empty so no default workers are shown)
+  Future<void> _syncWithSupabase() async {
+    await syncWithSupabase();
+  }
+
+  // Registered Skilled Workers
   final List<WorkerModel> _workers = [];
 
   // Job Bookings List in Naval, Biliran, Philippines
@@ -51,6 +77,7 @@ class DataService extends ChangeNotifier {
       workDetails: 'Main kitchen pipe broke and leaking water heavily onto floor. Needs urgent repair, replacement of PVC connectors, and sealant application.',
       hourlyRate: 350.0,
       estimatedHours: 3.0,
+      workersNeeded: 1,
       status: 'Pending',
       createdAt: '2025-02-23 09:30 AM',
     ),
@@ -67,6 +94,7 @@ class DataService extends ChangeNotifier {
       workDetails: 'Custom wooden kitchen cabinet doors sagging, alignment adjustment needed, plus repairing 2 bedroom doors that catch on the floor.',
       hourlyRate: 300.0,
       estimatedHours: 4.0,
+      workersNeeded: 1,
       status: 'Pending',
       createdAt: '2025-02-23 10:15 AM',
     ),
@@ -83,43 +111,56 @@ class DataService extends ChangeNotifier {
       workDetails: 'Air conditioner outlet keeps tripping circuit breaker when turned on. Need licensed electrician to inspect breaker box and install dedicated 20A outlet line.',
       hourlyRate: 400.0,
       estimatedHours: 2.5,
+      workersNeeded: 1,
       status: 'Accepted',
       assignedWorkerId: 'w3',
       assignedWorkerName: 'Engr. Joey Sparks (Electrician)',
       createdAt: '2025-02-22 04:45 PM',
-    ),
-    JobBooking(
-      id: 'job-104',
-      customerId: 'c4',
-      customerName: 'Mang Benning',
-      customerPhone: '0908-777-6655',
-      customerAddress: 'Brgy. P.I. Garcia, Naval, Biliran, Philippines',
-      customerLat: 11.5635,
-      customerLng: 124.3955,
-      workCategory: 'Appliance Repair',
-      title: 'Split-Type Aircon Deep Cleaning & Freon Recharge',
-      workDetails: '2 HP split type Inverter AC unit in master bedroom not cooling effectively and dripping water. Needs thorough chemical coil washing and gas level check.',
-      hourlyRate: 380.0,
-      estimatedHours: 2.0,
-      status: 'Pending',
-      createdAt: '2025-02-23 11:00 AM',
     ),
   ];
 
   List<WorkerModel> get workers => List.unmodifiable(_workers);
   List<JobBooking> get jobs => List.unmodifiable(_jobs);
 
-  // Filter workers by category
   List<WorkerModel> getWorkersByCategory(String category) {
     if (category == 'All') return _workers;
     return _workers.where((w) => w.workCategory == category).toList();
   }
 
-  // Set default logged in user for testing/initial state
-  void setLoggedInCustomer(CustomerModel customer) {
+  // Set default logged in user for testing/initial state with SharedPreferences profile picture cache
+  Future<void> setLoggedInCustomer(CustomerModel customer) async {
+    CustomerModel loaded = customer;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedImage = prefs.getString('profile_image_${customer.email}');
+      if (cachedImage != null && cachedImage.isNotEmpty) {
+        loaded = customer.copyWith(profileImagePath: cachedImage);
+      }
+    } catch (e) {
+      // Ignore
+    }
+
     _currentUserRole = UserRole.customer;
-    _currentCustomer = customer;
+    _currentCustomer = loaded;
     _currentWorker = null;
+    
+    // Load customer notifications
+    final notifs = await _supabaseService.fetchNotifications(loaded.id);
+    if (notifs.isNotEmpty) {
+      _notifications.clear();
+      _notifications.addAll(notifs);
+    } else if (_notifications.isEmpty) {
+      // Add welcome notification
+      final welcome = NotificationModel(
+        id: 'notif_welcome_${DateTime.now().millisecondsSinceEpoch}',
+        userId: loaded.id,
+        title: 'Welcome to Hanap Gawa! 🛠️',
+        message: 'Browse trusted local workers or post your service request on the map.',
+        createdAt: DateTime.now().toString().split('.').first,
+      );
+      _notifications.add(welcome);
+    }
+
     notifyListeners();
   }
 
@@ -138,30 +179,50 @@ class DataService extends ChangeNotifier {
   void logout() {
     _currentCustomer = null;
     _currentWorker = null;
+    _notifications.clear();
     notifyListeners();
   }
 
-  void updateCustomerProfile({
+  Future<void> updateCustomerProfile({
     String? name,
     String? phone,
     String? birthday,
     String? address,
     String? profileImagePath,
-  }) {
+  }) async {
     if (_currentCustomer != null) {
+      String? finalImagePath = profileImagePath ?? _currentCustomer!.profileImagePath;
+
+      // Convert image file to base64 data URL for SharedPreferences persistence
+      if (profileImagePath != null && profileImagePath.isNotEmpty && !profileImagePath.startsWith('data:')) {
+        try {
+          final file = File(profileImagePath);
+          if (await file.exists()) {
+            final bytes = await file.readAsBytes();
+            final base64Str = base64Encode(bytes);
+            final mimeType = profileImagePath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+            finalImagePath = 'data:$mimeType;base64,$base64Str';
+
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('profile_image_${_currentCustomer!.email}', finalImagePath);
+          }
+        } catch (e) {
+          if (kDebugMode) print('Error caching profile image: $e');
+        }
+      }
+
       _currentCustomer = _currentCustomer!.copyWith(
         name: name,
         phone: phone,
         birthday: birthday,
         address: address,
-        profileImagePath: profileImagePath,
+        profileImagePath: finalImagePath,
       );
       _supabaseService.saveCustomer(_currentCustomer!);
       notifyListeners();
     }
   }
 
-  // Register Customer
   Future<CustomerModel> registerCustomer({
     String? id,
     required String name,
@@ -180,12 +241,11 @@ class DataService extends ChangeNotifier {
       latitude: 11.5606 + (DateTime.now().millisecond % 50) * 0.0002,
       longitude: 124.3986 + (DateTime.now().millisecond % 50) * 0.0002,
     );
-    setLoggedInCustomer(newCustomer);
+    await setLoggedInCustomer(newCustomer);
     await _supabaseService.saveCustomer(newCustomer);
     return newCustomer;
   }
 
-  // Register Worker
   Future<WorkerModel> registerWorker({
     String? id,
     required String name,
@@ -218,7 +278,6 @@ class DataService extends ChangeNotifier {
     return newWorker;
   }
 
-  // Add Job Booking from Customer (Geocodes address if latitude/longitude not provided)
   Future<void> addJobBooking({
     required String title,
     required String workCategory,
@@ -260,7 +319,7 @@ class DataService extends ChangeNotifier {
           }
         }
       } catch (e) {
-        // Fallback to customer/default coordinates
+        // Fallback
       }
     }
 
@@ -284,25 +343,29 @@ class DataService extends ChangeNotifier {
 
     _jobs.insert(0, newJob);
     notifyListeners();
-    _supabaseService.saveJob(newJob);
+    await _supabaseService.saveJob(newJob);
   }
 
-  // Cancel job request with reason
-  void cancelJob(String jobId, String reason) {
+  // Cancel job request with reason and permanent deletion from Supabase
+  Future<void> cancelJob(String jobId, String reason) async {
     final index = _jobs.indexWhere((j) => j.id == jobId);
     if (index != -1) {
-      final existing = _jobs[index];
-      _jobs[index] = existing.copyWith(
-        status: 'Cancelled',
-        cancellationReason: reason,
-      );
+      _jobs.removeAt(index);
       notifyListeners();
-      _supabaseService.saveJob(_jobs[index]);
+      await _supabaseService.deleteJob(jobId);
     }
   }
 
-  // Worker accepts job
-  void acceptJob(String jobId, WorkerModel worker) {
+  // Worker accepts job (triggers sound & haptic alerts, and adds notification)
+  Future<void> acceptJob(String jobId, WorkerModel worker) async {
+    // Sound & Haptic alerts when a worker accepts a job request
+    try {
+      await HapticFeedback.vibrate();
+      await SystemSound.play(SystemSoundType.alert);
+    } catch (e) {
+      // Ignore if unsupported
+    }
+
     final index = _jobs.indexWhere((j) => j.id == jobId);
     if (index != -1) {
       final existing = _jobs[index];
@@ -319,13 +382,27 @@ class DataService extends ChangeNotifier {
         workDetails: existing.workDetails,
         hourlyRate: existing.hourlyRate,
         estimatedHours: existing.estimatedHours,
+        workersNeeded: existing.workersNeeded,
         status: 'Accepted',
         assignedWorkerId: worker.id,
         assignedWorkerName: worker.name,
         createdAt: existing.createdAt,
       );
+
+      // Create notification for customer
+      final notif = NotificationModel(
+        id: 'notif_${DateTime.now().millisecondsSinceEpoch}',
+        userId: existing.customerId,
+        title: 'Worker Accepted Your Job! 🎉',
+        message: '${worker.name} (${worker.workCategory}) has accepted your job "${existing.title}".',
+        isRead: false,
+        createdAt: DateTime.now().toString().split('.').first,
+      );
+      _notifications.insert(0, notif);
+      await _supabaseService.saveNotification(notif);
+
       notifyListeners();
-      _supabaseService.updateJobStatus(
+      await _supabaseService.updateJobStatus(
         jobId,
         'Accepted',
         workerId: worker.id,
@@ -335,7 +412,7 @@ class DataService extends ChangeNotifier {
   }
 
   // Complete job
-  void completeJob(String jobId) {
+  Future<void> completeJob(String jobId) async {
     final index = _jobs.indexWhere((j) => j.id == jobId);
     if (index != -1) {
       final existing = _jobs[index];
@@ -352,13 +429,36 @@ class DataService extends ChangeNotifier {
         workDetails: existing.workDetails,
         hourlyRate: existing.hourlyRate,
         estimatedHours: existing.estimatedHours,
+        workersNeeded: existing.workersNeeded,
         status: 'Completed',
         assignedWorkerId: existing.assignedWorkerId,
         assignedWorkerName: existing.assignedWorkerName,
         createdAt: existing.createdAt,
       );
+
+      // Create notification for customer
+      final notif = NotificationModel(
+        id: 'notif_${DateTime.now().millisecondsSinceEpoch}',
+        userId: existing.customerId,
+        title: 'Job Completed! ✅',
+        message: 'Your job "${existing.title}" has been marked as completed by ${existing.assignedWorkerName ?? 'Worker'}.',
+        isRead: false,
+        createdAt: DateTime.now().toString().split('.').first,
+      );
+      _notifications.insert(0, notif);
+      await _supabaseService.saveNotification(notif);
+
       notifyListeners();
-      _supabaseService.updateJobStatus(jobId, 'Completed');
+      await _supabaseService.updateJobStatus(jobId, 'Completed');
+    }
+  }
+
+  Future<void> markNotificationAsRead(String notifId) async {
+    final index = _notifications.indexWhere((n) => n.id == notifId);
+    if (index != -1) {
+      _notifications[index] = _notifications[index].copyWith(isRead: true);
+      notifyListeners();
+      await _supabaseService.markNotificationAsRead(notifId);
     }
   }
 }
