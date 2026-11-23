@@ -93,9 +93,9 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: maroonColor.withOpacity(0.08),
+              color: maroonColor.withAlpha(20),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: maroonColor.withOpacity(0.3)),
+              border: Border.all(color: maroonColor.withAlpha(75)),
             ),
             child: Row(
               children: [
@@ -145,7 +145,6 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
       itemCount: jobs.length,
       itemBuilder: (context, index) {
         final job = jobs[index];
-        final isAccepted = job.status == 'Accepted';
         final isAssignedToMe = job.assignedWorkerId == worker.id;
 
         return Card(
@@ -163,7 +162,7 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: maroonColor.withOpacity(0.1),
+                        color: maroonColor.withAlpha(25),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(

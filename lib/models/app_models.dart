@@ -74,6 +74,7 @@ class CustomerModel {
   final String address;
   final double latitude;
   final double longitude;
+  final String? profileImagePath;
 
   CustomerModel({
     required this.id,
@@ -84,6 +85,7 @@ class CustomerModel {
     required this.address,
     this.latitude = 11.5606,
     this.longitude = 124.3986,
+    this.profileImagePath,
   });
 
   Map<String, dynamic> toJson() => {
@@ -95,6 +97,7 @@ class CustomerModel {
         'address': address,
         'latitude': latitude,
         'longitude': longitude,
+        'profile_image_path': profileImagePath,
       };
 
   factory CustomerModel.fromJson(Map<String, dynamic> json) => CustomerModel(
@@ -106,7 +109,32 @@ class CustomerModel {
         address: json['address'] ?? '',
         latitude: (json['latitude'] as num?)?.toDouble() ?? 11.5606,
         longitude: (json['longitude'] as num?)?.toDouble() ?? 124.3986,
+        profileImagePath: json['profile_image_path'],
       );
+
+  CustomerModel copyWith({
+    String? id,
+    String? name,
+    String? email,
+    String? phone,
+    String? birthday,
+    String? address,
+    double? latitude,
+    double? longitude,
+    String? profileImagePath,
+  }) {
+    return CustomerModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      birthday: birthday ?? this.birthday,
+      address: address ?? this.address,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      profileImagePath: profileImagePath ?? this.profileImagePath,
+    );
+  }
 }
 
 class WorkerModel {

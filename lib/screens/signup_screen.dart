@@ -295,11 +295,7 @@ class _SignupScreenState extends State<SignupScreen> {
               // Full Name
               TextFormField(
                 controller: _nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  prefixIcon: Icon(Icons.person, color: maroonColor),
-                  border: OutlineInputBorder(),
-                ),
+                decoration: _inputDecoration('Full Name', Icons.person_outline),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter full name' : null,
               ),
               const SizedBox(height: 12),
@@ -308,11 +304,7 @@ class _SignupScreenState extends State<SignupScreen> {
               TextFormField(
                 controller: _phoneCtrl,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'Contact Phone Number',
-                  prefixIcon: Icon(Icons.phone, color: maroonColor),
-                  border: OutlineInputBorder(),
-                ),
+                decoration: _inputDecoration('Contact Phone Number', Icons.phone_outlined),
                 validator: (v) =>
                     (v == null || v.trim().length < 7) ? 'Enter valid phone number' : null,
               ),
@@ -321,9 +313,10 @@ class _SignupScreenState extends State<SignupScreen> {
               // Address with Interactive Map Picker
               TextFormField(
                 controller: _addressCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Complete Address / Location',
-                  prefixIcon: const Icon(Icons.location_on, color: maroonColor),
+                decoration: _inputDecoration(
+                  'Complete Address / Location',
+                  Icons.location_on_outlined,
+                  hintText: 'Type address or tap map icon to pick location',
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.map, color: maroonColor),
                     tooltip: 'Pick Location on Map',
@@ -339,8 +332,6 @@ class _SignupScreenState extends State<SignupScreen> {
                       }
                     },
                   ),
-                  border: const OutlineInputBorder(),
-                  hintText: 'Type address or tap map icon to pick location',
                 ),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Enter address or select on map' : null,
@@ -353,15 +344,14 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _birthdayCtrl,
                   readOnly: true,
                   onTap: () => _selectBirthday(context),
-                  decoration: InputDecoration(
-                    labelText: 'Date of Birth (Birthday)',
-                    prefixIcon: const Icon(Icons.cake, color: maroonColor),
+                  decoration: _inputDecoration(
+                    'Date of Birth (Birthday)',
+                    Icons.cake_outlined,
+                    hintText: 'Tap to select Year, Month & Date',
                     suffixIcon: IconButton(
                       icon: const Icon(Icons.calendar_month, color: maroonColor),
                       onPressed: () => _selectBirthday(context),
                     ),
-                    border: const OutlineInputBorder(),
-                    hintText: 'Tap to select Year, Month & Date',
                   ),
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? 'Please select your birthday' : null,
@@ -373,11 +363,7 @@ class _SignupScreenState extends State<SignupScreen> {
               TextFormField(
                 controller: _emailCtrl,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Email Address',
-                  prefixIcon: Icon(Icons.email, color: maroonColor),
-                  border: OutlineInputBorder(),
-                ),
+                decoration: _inputDecoration('Email Address', Icons.email_outlined),
                 validator: (v) =>
                     (v == null || !v.contains('@')) ? 'Enter valid email address' : null,
               ),
@@ -386,11 +372,7 @@ class _SignupScreenState extends State<SignupScreen> {
               TextFormField(
                 controller: _passwordCtrl,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: Icon(Icons.lock, color: maroonColor),
-                  border: OutlineInputBorder(),
-                ),
+                decoration: _inputDecoration('Password', Icons.lock_outline),
                 validator: (v) =>
                     (v == null || v.length < 6) ? 'Password must be at least 6 chars' : null,
               ),
@@ -500,8 +482,11 @@ class _SignupScreenState extends State<SignupScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: maroonColor,
+                  foregroundColor: Colors.white,
+                  elevation: 4,
+                  shadowColor: maroonColor.withAlpha(102),
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 onPressed: _signup,
                 child: Text(
@@ -509,15 +494,39 @@ class _SignupScreenState extends State<SignupScreen> {
                       ? 'COMPLETE CUSTOMER SIGN UP'
                       : 'REGISTER WORKER PROFILE',
                   style: const TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    letterSpacing: 0.8,
                   ),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String label, IconData icon, {Widget? suffixIcon, String? hintText}) {
+    const maroonColor = Color(0xFF800000);
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: maroonColor),
+      suffixIcon: suffixIcon,
+      hintText: hintText,
+      filled: true,
+      fillColor: Colors.grey[50],
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: maroonColor, width: 2),
       ),
     );
   }

@@ -6,6 +6,18 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import '../services/location_service.dart';
 
+class LocationResult {
+  final String address;
+  final double latitude;
+  final double longitude;
+
+  LocationResult({
+    required this.address,
+    required this.latitude,
+    required this.longitude,
+  });
+}
+
 class LocationPickerDialog extends StatefulWidget {
   final String initialAddress;
 
@@ -14,8 +26,13 @@ class LocationPickerDialog extends StatefulWidget {
     this.initialAddress = 'Naval, Biliran, Philippines',
   });
 
-  static Future<String?> show(BuildContext context, {String initialAddress = ''}) {
-    return showDialog<String>(
+  static Future<String?> show(BuildContext context, {String initialAddress = ''}) async {
+    final result = await showPicker(context, initialAddress: initialAddress);
+    return result?.address;
+  }
+
+  static Future<LocationResult?> showPicker(BuildContext context, {String initialAddress = ''}) {
+    return showDialog<LocationResult>(
       context: context,
       builder: (_) => LocationPickerDialog(
         initialAddress: initialAddress.isNotEmpty
@@ -670,7 +687,14 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                             backgroundColor: maroonColor,
                           ),
                           onPressed: () {
-                            Navigator.pop(context, _addressCtrl.text.trim());
+                            Navigator.pop(
+                              context,
+                              LocationResult(
+                                address: _addressCtrl.text.trim(),
+                                latitude: _selectedPoint.latitude,
+                                longitude: _selectedPoint.longitude,
+                              ),
+                            );
                           },
                           icon: const Icon(Icons.check, color: Colors.white, size: 18),
                           label: const Text(

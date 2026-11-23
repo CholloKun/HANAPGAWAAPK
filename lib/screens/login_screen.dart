@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_models.dart';
 import '../services/data_service.dart';
 import '../services/supabase_service.dart';
@@ -17,11 +18,54 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailCtrl = TextEditingController(text: 'juan.customer@gmail.com');
-  final _passwordCtrl = TextEditingController(text: 'password123');
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
 
   UserRole _selectedRole = UserRole.customer;
   final DataService _dataService = DataService();
+  bool _rememberMe = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedEmail = prefs.getString('saved_email');
+      final savedPassword = prefs.getString('saved_password');
+      final remember = prefs.getBool('remember_me') ?? false;
+
+      if (remember && savedEmail != null && savedPassword != null && mounted) {
+        setState(() {
+          _emailCtrl.text = savedEmail;
+          _passwordCtrl.text = savedPassword;
+          _rememberMe = true;
+        });
+      }
+    } catch (e) {
+      // Ignore preference errors
+    }
+  }
+
+  Future<void> _saveOrClearCredentials(String email, String password) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_rememberMe) {
+        await prefs.setString('saved_email', email);
+        await prefs.setString('saved_password', password);
+        await prefs.setBool('remember_me', true);
+      } else {
+        await prefs.remove('saved_email');
+        await prefs.remove('saved_password');
+        await prefs.setBool('remember_me', false);
+      }
+    } catch (e) {
+      // Ignore preference errors
+    }
+  }
 
   Route<T> _smoothRoute<T>(Widget page) {
     return PageRouteBuilder<T>(
@@ -45,21 +89,44 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+
+
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final email = _emailCtrl.text.trim();
-    final password = _passwordCtrl.text.trim();
+    final typedEmail = _emailCtrl.text.trim();
+    final typedPassword = _passwordCtrl.text.trim();
+
+    final isCustomInput = typedEmail.isNotEmpty || typedPassword.isNotEmpty;
+
+    final email = typedEmail.isNotEmpty
+        ? typedEmail
+        : (_selectedRole == UserRole.customer
+            ? 'juan.customer@gmail.com'
+            : 'juan.carpentry@gmail.com');
+
+    final password = typedPassword.isNotEmpty ? typedPassword : 'password123';
+
+    await _saveOrClearCredentials(email, password);
+
+    // Validate email format if typed
+    if (typedEmail.isNotEmpty && !typedEmail.contains('@')) {
+      _showErrorNotification('Invalid email format. Please enter a valid email address.');
+      return;
+    }
 
     if (_selectedRole == UserRole.customer) {
       bool isConfirmed = true;
-      try {
+      if (SupabaseService().isInitialized) {
         final authResponse = await SupabaseService().signIn(email: email, password: password);
-        if (authResponse != null && authResponse.user != null) {
+        if (authResponse == null || authResponse.user == null) {
+          if (isCustomInput) {
+            _showErrorNotification('Incorrect email or password. Please check your details and try again.');
+            return;
+          }
+        } else {
           isConfirmed = await SupabaseService().isEmailConfirmed();
         }
-      } catch (e) {
-        // Fallback for offline/mock mode
       }
 
       if (!isConfirmed) {
@@ -70,16 +137,27 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (dialogContext) => EmailConfirmationWaitingDialog(
               email: email,
               onConfirmed: () {
-                _proceedToCustomerHome();
+                _proceedToCustomerHome(email);
               },
             ),
           );
         }
       } else {
-        _proceedToCustomerHome();
+        _proceedToCustomerHome(email);
       }
     } else {
-      final worker = _dataService.workers.first;
+      if (SupabaseService().isInitialized && isCustomInput) {
+        final authResponse = await SupabaseService().signIn(email: email, password: password);
+        if (authResponse == null || authResponse.user == null) {
+          _showErrorNotification('Incorrect email or password. Please check your details and try again.');
+          return;
+        }
+      }
+
+      final worker = _dataService.workers.firstWhere(
+        (w) => w.email.toLowerCase() == email.toLowerCase(),
+        orElse: () => _dataService.workers.first,
+      );
       _dataService.setLoggedInWorker(worker);
       Navigator.pushReplacement(
         context,
@@ -88,14 +166,39 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _proceedToCustomerHome() {
+  void _showErrorNotification(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.red.shade800,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void _proceedToCustomerHome(String email) {
     final customer = CustomerModel(
       id: 'c_user',
       name: 'Juan Dela Cruz',
-      email: _emailCtrl.text.trim(),
+      email: email,
       phone: '0917-888-9900',
       birthday: '1995-04-12',
-      address: 'España Blvd, Sampaloc, Manila',
+      address: 'Naval, Biliran, Philippines',
     );
     _dataService.setLoggedInCustomer(customer);
     Navigator.pushReplacement(
@@ -171,7 +274,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: GestureDetector(
                           onTap: () => setState(() {
                             _selectedRole = UserRole.worker;
-                            _emailCtrl.text = 'juan.carpentry@gmail.com';
                           }),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
@@ -215,12 +317,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 // Form Card
                 Card(
-                  elevation: 4,
+                  elevation: 6,
+                  shadowColor: maroonColor.withAlpha(38),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(22),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(24),
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -228,50 +331,110 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           Text(
                             _selectedRole == UserRole.customer
-                                ? 'Customer Sign In'
-                                : 'Worker Sign In',
+                                ? 'Welcome Back, Customer!'
+                                : 'Welcome Back, Pro Worker!',
                             style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
                               color: maroonColor,
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
                             _selectedRole == UserRole.customer
-                                ? 'Book skilled workers for plumbing, carpentry, etc.'
-                                : 'Accept job requests and view customer locations',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                ? 'Sign in to book trusted local experts'
+                                : 'Sign in to manage jobs & check real-time map',
+                            style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
                             textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
 
                           // Email field
                           TextFormField(
                             controller: _emailCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Email / Contact Number',
-                              prefixIcon: Icon(Icons.email, color: maroonColor),
-                              border: OutlineInputBorder(),
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: InputDecoration(
+                              labelText: 'Email Address',
+                              hintText: _selectedRole == UserRole.customer
+                                  ? 'juan.customer@gmail.com'
+                                  : 'juan.carpentry@gmail.com',
+                              hintStyle: TextStyle(color: Colors.grey[400]),
+                              prefixIcon: const Icon(Icons.email_outlined, color: maroonColor),
+                              filled: true,
+                              fillColor: Colors.grey[50],
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(color: maroonColor, width: 2),
+                              ),
                             ),
-                            validator: (v) =>
-                                (v == null || v.isEmpty) ? 'Please enter email' : null,
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
 
                           // Password field
                           TextFormField(
                             controller: _passwordCtrl,
                             obscureText: true,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Password',
-                              prefixIcon: Icon(Icons.lock, color: maroonColor),
-                              border: OutlineInputBorder(),
+                              hintText: 'password123',
+                              hintStyle: TextStyle(color: Colors.grey[400]),
+                              prefixIcon: const Icon(Icons.lock_outline, color: maroonColor),
+                              filled: true,
+                              fillColor: Colors.grey[50],
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(color: maroonColor, width: 2),
+                              ),
                             ),
-                            validator: (v) => (v == null || v.length < 4)
-                                ? 'Password too short'
-                                : null,
+                          ),
+                          const SizedBox(height: 12),
+
+                          // Remember Me Checkbox
+                          Row(
+                            children: [
+                              SizedBox(
+                                height: 24,
+                                width: 24,
+                                child: Checkbox(
+                                  value: _rememberMe,
+                                  activeColor: maroonColor,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _rememberMe = val ?? false;
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Remember Me',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 20),
 
@@ -279,9 +442,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: maroonColor,
+                              foregroundColor: Colors.white,
+                              elevation: 4,
+                              shadowColor: maroonColor.withAlpha(102),
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(14),
                               ),
                             ),
                             onPressed: _login,
@@ -290,9 +456,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ? 'LOGIN AS CUSTOMER'
                                   : 'LOGIN AS WORKER',
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 15,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                letterSpacing: 0.8,
                               ),
                             ),
                           ),
@@ -432,13 +598,16 @@ class _EmailConfirmationWaitingDialogState extends State<EmailConfirmationWaitin
             foregroundColor: Colors.white,
           ),
           onPressed: () async {
+            final nav = Navigator.of(context);
+            final messenger = ScaffoldMessenger.of(context);
             final confirmed = await SupabaseService().isEmailConfirmed();
-            if (confirmed && mounted) {
+            if (!mounted) return;
+            if (confirmed) {
               _timer?.cancel();
-              Navigator.pop(context);
+              nav.pop();
               widget.onConfirmed();
-            } else if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
+            } else {
+              messenger.showSnackBar(
                 const SnackBar(
                   content: Text('Email not confirmed yet. Please verify your email inbox.'),
                   backgroundColor: Colors.orange,

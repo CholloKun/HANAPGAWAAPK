@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../models/app_models.dart';
 import 'supabase_service.dart';
 
@@ -31,94 +33,8 @@ class DataService extends ChangeNotifier {
     }
   }
 
-  // Sample Skilled Workers in Naval, Biliran, Philippines
-  final List<WorkerModel> _workers = [
-    WorkerModel(
-      id: 'w1',
-      name: 'Mang Juan dela Cruz',
-      email: 'juan.carpentry@gmail.com',
-      phone: '0917-555-1234',
-      address: 'Brgy. Smo. Rosario, Naval, Biliran, Philippines',
-      workCategory: 'Carpentry',
-      hourlyRate: 300.0,
-      workingPermitNo: 'PERMIT-NVL-2024-8842',
-      nationalCertificateNo: 'TESDA-NC2-CARP-99120',
-      proficiencyProof: 'TESDA NC II Carpentry & Building Maintenance Certificate',
-      rating: 4.9,
-      completedJobs: 48,
-      isAvailable: true,
-      latitude: 11.5606,
-      longitude: 124.3986,
-    ),
-    WorkerModel(
-      id: 'w2',
-      name: 'Ramon "Master Plumber" Santos',
-      email: 'ramon.plumbing@gmail.com',
-      phone: '0918-777-5678',
-      address: 'Brgy. P.I. Garcia, Naval, Biliran, Philippines',
-      workCategory: 'Water Repairman / Plumbing',
-      hourlyRate: 350.0,
-      workingPermitNo: 'PERMIT-NVL-2024-1102',
-      nationalCertificateNo: 'TESDA-NC2-PLUMB-44810',
-      proficiencyProof: 'Licensed Master Plumber & TESDA NC II Plumbing Certificate',
-      rating: 4.8,
-      completedJobs: 65,
-      isAvailable: true,
-      latitude: 11.5640,
-      longitude: 124.3960,
-    ),
-    WorkerModel(
-      id: 'w3',
-      name: 'Engr. Joey Sparks (Electrician)',
-      email: 'joey.electric@gmail.com',
-      phone: '0920-333-4411',
-      address: 'Brgy. Atipolo, Naval, Biliran, Philippines',
-      workCategory: 'Electrical',
-      hourlyRate: 400.0,
-      workingPermitNo: 'PERMIT-NVL-2024-3091',
-      nationalCertificateNo: 'TESDA-NC3-ELEC-77123',
-      proficiencyProof: 'TESDA NC III Electrical Installation & Maintenance Certificate',
-      rating: 5.0,
-      completedJobs: 82,
-      isAvailable: true,
-      latitude: 11.5580,
-      longitude: 124.4020,
-    ),
-    WorkerModel(
-      id: 'w4',
-      name: 'Cardo Dalisay (Mason & Tiler)',
-      email: 'cardo.masonry@gmail.com',
-      phone: '0999-111-2233',
-      address: 'Brgy. Agpangi, Naval, Biliran, Philippines',
-      workCategory: 'Masonry & Tiling',
-      hourlyRate: 320.0,
-      workingPermitNo: 'PERMIT-NVL-2024-0044',
-      nationalCertificateNo: 'TESDA-NC2-MASON-55214',
-      proficiencyProof: 'TESDA NC II Tile Setting & Construction Permit',
-      rating: 4.7,
-      completedJobs: 34,
-      isAvailable: true,
-      latitude: 11.5720,
-      longitude: 124.3910,
-    ),
-    WorkerModel(
-      id: 'w5',
-      name: 'Elena Rostro (Cooling Tech)',
-      email: 'elena.aircon@gmail.com',
-      phone: '0915-888-9900',
-      address: 'Brgy. Calumpang, Naval, Biliran, Philippines',
-      workCategory: 'Appliance Repair',
-      hourlyRate: 380.0,
-      workingPermitNo: 'PERMIT-NVL-2024-9122',
-      nationalCertificateNo: 'TESDA-NC2-HVAC-12984',
-      proficiencyProof: 'HVAC & Refrigeration Certified Technician (TESDA NC II)',
-      rating: 4.9,
-      completedJobs: 51,
-      isAvailable: true,
-      latitude: 11.5510,
-      longitude: 124.3940,
-    ),
-  ];
+  // Registered Skilled Workers (Starts empty so no default workers are shown)
+  final List<WorkerModel> _workers = [];
 
   // Job Bookings List in Naval, Biliran, Philippines
   final List<JobBooking> _jobs = [
@@ -225,6 +141,26 @@ class DataService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateCustomerProfile({
+    String? name,
+    String? phone,
+    String? birthday,
+    String? address,
+    String? profileImagePath,
+  }) {
+    if (_currentCustomer != null) {
+      _currentCustomer = _currentCustomer!.copyWith(
+        name: name,
+        phone: phone,
+        birthday: birthday,
+        address: address,
+        profileImagePath: profileImagePath,
+      );
+      _supabaseService.saveCustomer(_currentCustomer!);
+      notifyListeners();
+    }
+  }
+
   // Register Customer
   Future<CustomerModel> registerCustomer({
     String? id,
@@ -282,15 +218,17 @@ class DataService extends ChangeNotifier {
     return newWorker;
   }
 
-  // Add Job Booking from Customer
-  void addJobBooking({
+  // Add Job Booking from Customer (Geocodes address if latitude/longitude not provided)
+  Future<void> addJobBooking({
     required String title,
     required String workCategory,
     required String workDetails,
     required double hourlyRate,
     required double estimatedHours,
     required String address,
-  }) {
+    double? latitude,
+    double? longitude,
+  }) async {
     final cust = _currentCustomer ??
         CustomerModel(
           id: 'c_default',
@@ -301,14 +239,38 @@ class DataService extends ChangeNotifier {
           address: address.isNotEmpty ? address : 'Naval, Biliran, Philippines',
         );
 
+    double lat = latitude ?? cust.latitude;
+    double lng = longitude ?? cust.longitude;
+
+    if (latitude == null || longitude == null) {
+      try {
+        final encodedAddr = Uri.encodeComponent(address);
+        final url = Uri.parse('https://nominatim.openstreetmap.org/search?format=json&q=$encodedAddr&limit=1');
+        final response = await http.get(
+          url,
+          headers: {'User-Agent': 'com.hanapgawa.app'},
+        ).timeout(const Duration(seconds: 4));
+
+        if (response.statusCode == 200) {
+          final List data = json.decode(response.body);
+          if (data.isNotEmpty) {
+            lat = double.tryParse(data[0]['lat'].toString()) ?? lat;
+            lng = double.tryParse(data[0]['lon'].toString()) ?? lng;
+          }
+        }
+      } catch (e) {
+        // Fallback to customer/default coordinates
+      }
+    }
+
     final newJob = JobBooking(
       id: 'job_${DateTime.now().millisecondsSinceEpoch}',
       customerId: cust.id,
       customerName: cust.name,
       customerPhone: cust.phone,
       customerAddress: address.isNotEmpty ? address : cust.address,
-      customerLat: cust.latitude,
-      customerLng: cust.longitude,
+      customerLat: lat,
+      customerLng: lng,
       workCategory: workCategory,
       title: title,
       workDetails: workDetails,

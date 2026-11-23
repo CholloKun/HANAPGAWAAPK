@@ -29,6 +29,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
   late TextEditingController _rateCtrl;
   final _hoursCtrl = TextEditingController(text: '3.0');
 
+  double? _selectedLat;
+  double? _selectedLng;
+
   final DataService _dataService = DataService();
 
   @override
@@ -44,29 +47,33 @@ class _PostJobScreenState extends State<PostJobScreen> {
     }
   }
 
-  void _submitJob() {
+  Future<void> _submitJob() async {
     if (!_formKey.currentState!.validate()) return;
 
     final rate = double.tryParse(_rateCtrl.text) ?? 350.0;
     final hours = double.tryParse(_hoursCtrl.text) ?? 2.0;
 
-    _dataService.addJobBooking(
+    await _dataService.addJobBooking(
       title: _titleCtrl.text.trim(),
       workCategory: _selectedCategory,
       workDetails: _detailsCtrl.text.trim(),
       hourlyRate: rate,
       estimatedHours: hours,
       address: _addressCtrl.text.trim(),
+      latitude: _selectedLat,
+      longitude: _selectedLng,
     );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Job Request Posted! Workers can now view location & accept.'),
-        backgroundColor: Color(0xFF800000),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Job Request Posted! Workers can now view location & accept.'),
+          backgroundColor: Color(0xFF800000),
+        ),
+      );
 
-    Navigator.pop(context);
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -166,13 +173,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
                     icon: const Icon(Icons.map, color: maroonColor),
                     tooltip: 'Pick Location on Map',
                     onPressed: () async {
-                      final selected = await LocationPickerDialog.show(
+                      final result = await LocationPickerDialog.showPicker(
                         context,
                         initialAddress: _addressCtrl.text,
                       );
-                      if (selected != null && selected.isNotEmpty) {
+                      if (result != null) {
                         setState(() {
-                          _addressCtrl.text = selected;
+                          _addressCtrl.text = result.address;
+                          _selectedLat = result.latitude;
+                          _selectedLng = result.longitude;
                         });
                       }
                     },

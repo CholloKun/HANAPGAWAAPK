@@ -40,7 +40,7 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
   void initState() {
     super.initState();
     _mapController = MapController();
-    _activeJob = widget.selectedJob ?? (widget.jobs.isNotEmpty ? widget.jobs.first : null);
+    _activeJob = widget.selectedJob;
     _fetchRealDeviceLocation();
   }
 
@@ -137,11 +137,20 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
   @override
   void didUpdateWidget(covariant InteractiveMapWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.selectedJob != null) {
+    if (widget.jobs.length > oldWidget.jobs.length) {
+      final newestJob = widget.jobs.first;
+      setState(() {
+        _activeJob = newestJob;
+      });
+      _mapController.move(
+        LatLng(newestJob.customerLat, newestJob.customerLng),
+        15.5,
+      );
+    } else if (widget.selectedJob != null && widget.selectedJob != oldWidget.selectedJob) {
       _activeJob = widget.selectedJob;
       _mapController.move(
         LatLng(_activeJob!.customerLat, _activeJob!.customerLng),
-        15.0,
+        15.5,
       );
     }
   }
@@ -184,10 +193,15 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all,
                 ),
+                onTap: (tapPosition, point) {
+                  setState(() {
+                    _activeJob = null;
+                  });
+                },
                 onPositionChanged: (position, hasGesture) {
                   if (hasGesture) {
                     setState(() {
-                      if (position.zoom != null) _currentZoom = position.zoom!;
+                      _currentZoom = position.zoom;
                       _currentRotation = position.rotation;
                     });
                   }
@@ -547,145 +561,141 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
             ),
 
             // Bottom Selected Job Details Preview Card on Map
+            // Pop-Up Style Info Screen (Appears when clicking a job request on map, disappears when tapping anywhere)
             if (_activeJob != null)
               Positioned(
-                left: 10,
-                right: 10,
-                bottom: 10,
-                child: Card(
-                  elevation: 6,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: maroonColor, width: 1.2),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: maroonColor.withAlpha(26),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                _getCategoryIcon(_activeJob!.workCategory),
-                                color: maroonColor,
-                                size: 24,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _activeJob!.title,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Customer: ${_activeJob!.customerName} • ${_activeJob!.customerAddress}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey[700],
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Work details summary snippet
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.amber[50],
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.amber.shade200),
-                          ),
-                          child: Text(
-                            'Details: ${_activeJob!.workDetails}',
-                            style: const TextStyle(fontSize: 11, color: Colors.black87),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.green[800],
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '₱${_activeJob!.hourlyRate.toStringAsFixed(0)} / hour',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  child: Card(
+                    elevation: 8,
+                    shadowColor: maroonColor.withAlpha(80),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: maroonColor.withAlpha(100), width: 1.5),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: maroonColor.withAlpha(20),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  _getCategoryIcon(_activeJob!.workCategory),
+                                  color: maroonColor,
+                                  size: 20,
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _activeJob!.title,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      '${_activeJob!.customerName} • ${_activeJob!.customerAddress}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey[700],
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Close Pop-Up Button
+                              InkWell(
+                                onTap: () => setState(() => _activeJob = null),
+                                borderRadius: BorderRadius.circular(20),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4.0),
+                                  child: Icon(Icons.close, size: 18, color: Colors.grey),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
 
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: maroonColor,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
+                                  horizontal: 10,
+                                  vertical: 4,
                                 ),
-                                shape: RoundedRectangleBorder(
+                                decoration: BoxDecoration(
+                                  color: Colors.green[800],
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                              ),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => JobDetailScreen(job: _activeJob!),
+                                child: Text(
+                                  '₱${_activeJob!.hourlyRate.toStringAsFixed(0)} / hr',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
                                   ),
-                                );
-                              },
-                              icon: const Icon(
-                                Icons.arrow_forward,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                              label: const Text(
-                                'View Details',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
+
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: maroonColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  elevation: 2,
+                                ),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => JobDetailScreen(job: _activeJob!),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.arrow_forward,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                                label: const Text(
+                                  'View Details',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
