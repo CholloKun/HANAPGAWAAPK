@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/app_models.dart';
 import '../services/data_service.dart';
 import '../services/supabase_service.dart';
@@ -39,6 +41,46 @@ class _SignupScreenState extends State<SignupScreen> {
   final _workingPermitCtrl = TextEditingController();
   final _nationalCertCtrl = TextEditingController();
   final _proficiencyProofCtrl = TextEditingController();
+
+  String? _ncDocBase64;
+  String? _permitDocBase64;
+
+  Future<void> _pickDocumentImage(bool isNcDoc) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+        maxWidth: 800,
+        maxHeight: 800,
+      );
+
+      if (pickedFile != null) {
+        final bytes = await pickedFile.readAsBytes();
+        final base64String = base64Encode(bytes);
+        final dataUrl = 'data:image/jpeg;base64,$base64String';
+
+        setState(() {
+          if (isNcDoc) {
+            _ncDocBase64 = dataUrl;
+          } else {
+            _permitDocBase64 = dataUrl;
+          }
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(isNcDoc ? 'TESDA NC Certificate document attached!' : 'Working Permit document attached!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error picking document: $e');
+    }
+  }
 
   final DataService _dataService = DataService();
 
@@ -151,12 +193,15 @@ class _SignupScreenState extends State<SignupScreen> {
         name: fullName,
         email: email,
         phone: _phoneCtrl.text.trim(),
+        birthday: _birthdayCtrl.text.trim(),
         address: _addressCtrl.text.trim(),
         workCategory: _selectedCategory,
         hourlyRate: double.tryParse(_hourlyRateCtrl.text.trim()) ?? 300.0,
         workingPermitNo: _workingPermitCtrl.text.trim(),
         nationalCertificateNo: _nationalCertCtrl.text.trim(),
         proficiencyProof: _proficiencyProofCtrl.text.trim(),
+        nationalCertificateDoc: _ncDocBase64,
+        workingPermitDoc: _permitDocBase64,
       );
       _dataService.logout();
 
@@ -316,213 +361,262 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Shared Personal Details Section Header
-              _buildSectionTitle('Personal Details'),
-              const SizedBox(height: 12),
-
-              // First Name, Middle Name, Last Name, Suffix
-              TextFormField(
-                controller: _firstNameCtrl,
-                decoration: _inputDecoration('First Name', Icons.person_outline),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter first name' : null,
-              ),
-              const SizedBox(height: 12),
-
-              TextFormField(
-                controller: _middleNameCtrl,
-                decoration: _inputDecoration('Middle Name (Optional)', Icons.person_outline),
-              ),
-              const SizedBox(height: 12),
-
-              TextFormField(
-                controller: _lastNameCtrl,
-                decoration: _inputDecoration('Last Name', Icons.person_outline),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter last name' : null,
-              ),
-              const SizedBox(height: 12),
-
-              TextFormField(
-                controller: _suffixCtrl,
-                decoration: _inputDecoration('Suffix (Optional, e.g. Jr., III, Sr.)', Icons.badge_outlined),
-              ),
-              const SizedBox(height: 12),
-
-              // Phone Number
-              TextFormField(
-                controller: _phoneCtrl,
-                keyboardType: TextInputType.phone,
-                decoration: _inputDecoration('Contact Phone Number', Icons.phone_outlined),
-                validator: (v) =>
-                    (v == null || v.trim().length < 7) ? 'Enter valid phone number' : null,
-              ),
-              const SizedBox(height: 12),
-
-              // Address with Interactive Map Picker
-              TextFormField(
-                controller: _addressCtrl,
-                decoration: _inputDecoration(
-                  'Complete Address / Location',
-                  Icons.location_on_outlined,
-                  hintText: 'Type address or tap map icon to pick location',
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.map, color: maroonColor),
-                    tooltip: 'Pick Location on Map',
-                    onPressed: () async {
-                      final selected = await LocationPickerDialog.show(
-                        context,
-                        initialAddress: _addressCtrl.text,
-                      );
-                      if (selected != null && selected.isNotEmpty) {
-                        setState(() {
-                          _addressCtrl.text = selected;
-                        });
-                      }
-                    },
+              // Shared Personal Details Card
+              _buildFormCard(
+                title: 'Personal Details & Contact',
+                icon: Icons.person_outline,
+                children: [
+                  TextFormField(
+                    controller: _firstNameCtrl,
+                    decoration: _inputDecoration('First Name', Icons.person_outline),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter first name' : null,
                   ),
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Enter address or select on map' : null,
-              ),
-              const SizedBox(height: 12),
-
-              // CUSTOMER SPECIFIC FIELD: Interactive Calendar Birthday Picker
-              if (_role == UserRole.customer) ...[
-                TextFormField(
-                  controller: _birthdayCtrl,
-                  readOnly: true,
-                  onTap: () => _selectBirthday(context),
-                  decoration: _inputDecoration(
-                    'Date of Birth (Birthday)',
-                    Icons.cake_outlined,
-                    hintText: 'Tap to select Year, Month & Date',
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.calendar_month, color: maroonColor),
-                      onPressed: () => _selectBirthday(context),
-                    ),
-                  ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Please select your birthday' : null,
-                ),
-                const SizedBox(height: 12),
-              ],
-
-              // Email & Password
-              TextFormField(
-                controller: _emailCtrl,
-                keyboardType: TextInputType.emailAddress,
-                decoration: _inputDecoration('Email Address', Icons.email_outlined),
-                validator: (v) =>
-                    (v == null || !v.contains('@')) ? 'Enter valid email address' : null,
-              ),
-              const SizedBox(height: 12),
-
-              TextFormField(
-                controller: _passwordCtrl,
-                obscureText: true,
-                decoration: _inputDecoration('Password', Icons.lock_outline),
-                validator: (v) =>
-                    (v == null || v.length < 6) ? 'Password must be at least 6 chars' : null,
-              ),
-              const SizedBox(height: 20),
-
-              // WORKER SPECIFIC CREDENTIALS SECTION
-              if (_role == UserRole.worker) ...[
-                _buildSectionTitle('Worker Credentials & Proficiency Documents'),
-                const SizedBox(height: 8),
-
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.amber[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.amber.shade300),
-                  ),
-                  child: const Row(
+                  const SizedBox(height: 12),
+                  Row(
                     children: [
-                      Icon(Icons.verified_user, color: Colors.amber),
-                      SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          'Provide working permit & NC II certificates to prove proficiency to customers.',
-                          style: TextStyle(fontSize: 12, color: Colors.black87),
+                        child: TextFormField(
+                          controller: _middleNameCtrl,
+                          decoration: _inputDecoration('Middle Name (Optional)', Icons.person_outline),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _suffixCtrl,
+                          decoration: _inputDecoration('Suffix (Optional, Jr.)', Icons.badge_outlined),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 12),
-
-                // Primary Skill Category Dropdown
-                DropdownButtonFormField<String>(
-                  value: _selectedCategory,
-                  decoration: const InputDecoration(
-                    labelText: 'Primary Work Specialization',
-                    prefixIcon: Icon(Icons.build, color: maroonColor),
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _lastNameCtrl,
+                    decoration: _inputDecoration('Last Name', Icons.person_outline),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter last name' : null,
                   ),
-                  items: WorkCategory.categories
-                      .map((c) => DropdownMenuItem(value: c.title, child: Text(c.title)))
-                      .toList(),
-                  onChanged: (v) => setState(() => _selectedCategory = v!),
-                ),
-                const SizedBox(height: 12),
-
-                // Hourly Rate (₱/hr)
-                TextFormField(
-                  controller: _hourlyRateCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Rate per Hour (₱ / hr)',
-                    prefixIcon: Icon(Icons.payments, color: maroonColor),
-                    border: OutlineInputBorder(),
-                    suffixText: 'PHP / hour',
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _birthdayCtrl,
+                    readOnly: true,
+                    onTap: () => _selectBirthday(context),
+                    decoration: _inputDecoration(
+                      'Date of Birth (Birthday)',
+                      Icons.cake_outlined,
+                      hintText: 'Tap to select Year, Month & Date',
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.calendar_month, color: maroonColor),
+                        onPressed: () => _selectBirthday(context),
+                      ),
+                    ),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Please select your birthday' : null,
                   ),
-                  validator: (v) => (v == null || v.isEmpty) ? 'Enter hourly rate' : null,
-                ),
-                const SizedBox(height: 12),
-
-                // Working Permit Number
-                TextFormField(
-                  controller: _workingPermitCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Working Permit Number / Mayor\'s Permit',
-                    prefixIcon: Icon(Icons.badge, color: maroonColor),
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g. PERMIT-MNL-2024-8842',
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: _inputDecoration('Contact Phone Number', Icons.phone_outlined),
+                    validator: (v) =>
+                        (v == null || v.trim().length < 7) ? 'Enter valid phone number' : null,
                   ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Enter working permit details' : null,
-                ),
-                const SizedBox(height: 12),
+                ],
+              ),
 
-                // National Certificate / TESDA Certificate No.
-                TextFormField(
-                  controller: _nationalCertCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'National Certificate (NC II / TESDA No.)',
-                    prefixIcon: Icon(Icons.card_membership, color: maroonColor),
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g. TESDA-NC2-PLUMB-44810',
+              // Location & Address Card
+              _buildFormCard(
+                title: 'Location & Address',
+                icon: Icons.location_on_outlined,
+                children: [
+                  TextFormField(
+                    controller: _addressCtrl,
+                    decoration: _inputDecoration(
+                      'Complete Address / Location',
+                      Icons.location_on_outlined,
+                      hintText: 'Type address or tap map icon to pick location',
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.map, color: maroonColor),
+                        tooltip: 'Pick Location on Map',
+                        onPressed: () async {
+                          final selected = await LocationPickerDialog.show(
+                            context,
+                            initialAddress: _addressCtrl.text,
+                          );
+                          if (selected != null && selected.isNotEmpty) {
+                            setState(() {
+                              _addressCtrl.text = selected;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Enter address or select on map' : null,
                   ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Enter National Certificate No.' : null,
-                ),
-                const SizedBox(height: 12),
+                ],
+              ),
 
-                // Proof of Proficiency Document Details
-                TextFormField(
-                  controller: _proficiencyProofCtrl,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Proficiency Proof / Experience Documents',
-                    prefixIcon: Icon(Icons.description, color: maroonColor),
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g. 5+ years experience, Licensed Master Plumber, TESDA NC II Certified',
+              // Account Security Card
+              _buildFormCard(
+                title: 'Account Security',
+                icon: Icons.lock_outline,
+                children: [
+                  TextFormField(
+                    controller: _emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: _inputDecoration('Email Address', Icons.email_outlined),
+                    validator: (v) =>
+                        (v == null || !v.contains('@')) ? 'Enter valid email address' : null,
                   ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Enter proficiency proof details' : null,
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _passwordCtrl,
+                    obscureText: true,
+                    decoration: _inputDecoration('Password', Icons.lock_outline),
+                    validator: (v) =>
+                        (v == null || v.length < 6) ? 'Password must be at least 6 chars' : null,
+                  ),
+                ],
+              ),
+
+              // WORKER SPECIFIC CREDENTIALS & SPECIALIZATION SECTION
+              if (_role == UserRole.worker) ...[
+                _buildFormCard(
+                  title: 'Work Specialization & Rates',
+                  icon: Icons.build_outlined,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: _selectedCategory,
+                      decoration: const InputDecoration(
+                        labelText: 'Primary Work Specialization',
+                        prefixIcon: Icon(Icons.build, color: maroonColor),
+                        border: OutlineInputBorder(),
+                      ),
+                      items: WorkCategory.categories
+                          .map((c) => DropdownMenuItem(value: c.title, child: Text(c.title)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedCategory = v!),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _hourlyRateCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Rate per Hour (₱ / hr)',
+                        prefixIcon: Icon(Icons.payments, color: maroonColor),
+                        border: OutlineInputBorder(),
+                        suffixText: 'PHP / hour',
+                      ),
+                      validator: (v) => (v == null || v.isEmpty) ? 'Enter hourly rate' : null,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 20),
+
+                _buildFormCard(
+                  title: 'Credentials & Scanned Documents',
+                  icon: Icons.verified_user_outlined,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade300),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.verified_user, color: Colors.amber),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Upload working permit & NC II certificates to prove proficiency to customers.',
+                              style: TextStyle(fontSize: 12, color: Colors.black87),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Working Permit Number & Upload
+                    TextFormField(
+                      controller: _workingPermitCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Working Permit Number / Mayor\'s Permit',
+                        prefixIcon: Icon(Icons.badge, color: maroonColor),
+                        border: OutlineInputBorder(),
+                        hintText: 'e.g. PERMIT-MNL-2024-8842',
+                      ),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Enter working permit details' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: maroonColor,
+                          side: BorderSide(color: _permitDocBase64 != null ? Colors.green : maroonColor, width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => _pickDocumentImage(false),
+                        icon: Icon(_permitDocBase64 != null ? Icons.check_circle : Icons.upload_file, color: _permitDocBase64 != null ? Colors.green : maroonColor),
+                        label: Text(
+                          _permitDocBase64 != null ? 'Working Permit / ID Attached ✓' : 'Upload Scanned Working Permit / Gov ID Image',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: _permitDocBase64 != null ? Colors.green[800] : maroonColor),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // National Certificate / TESDA Certificate No. & Upload
+                    TextFormField(
+                      controller: _nationalCertCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'National Certificate (NC II / TESDA No.)',
+                        prefixIcon: Icon(Icons.card_membership, color: maroonColor),
+                        border: OutlineInputBorder(),
+                        hintText: 'e.g. TESDA-NC2-PLUMB-44810',
+                      ),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Enter National Certificate No.' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: maroonColor,
+                          side: BorderSide(color: _ncDocBase64 != null ? Colors.green : maroonColor, width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => _pickDocumentImage(true),
+                        icon: Icon(_ncDocBase64 != null ? Icons.check_circle : Icons.upload_file, color: _ncDocBase64 != null ? Colors.green : maroonColor),
+                        label: Text(
+                          _ncDocBase64 != null ? 'TESDA NC Certificate Attached ✓' : 'Upload Scanned TESDA NC Certificate Image',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: _ncDocBase64 != null ? Colors.green[800] : maroonColor),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Proof of Proficiency Document Details
+                    TextFormField(
+                      controller: _proficiencyProofCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Proficiency Proof / Experience Details',
+                        prefixIcon: Icon(Icons.description, color: maroonColor),
+                        border: OutlineInputBorder(),
+                        hintText: 'e.g. 5+ years experience, Licensed Master Plumber, TESDA NC II Certified',
+                      ),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Enter proficiency proof details' : null,
+                    ),
+                  ],
+                ),
               ],
 
               // Submit Button
@@ -554,6 +648,47 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
+  Widget _buildFormCard({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    const maroonColor = Color(0xFF800000);
+    return Card(
+      elevation: 2,
+      shadowColor: maroonColor.withAlpha(20),
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: maroonColor, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: maroonColor,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
   InputDecoration _inputDecoration(String label, IconData icon, {Widget? suffixIcon, String? hintText}) {
     const maroonColor = Color(0xFF800000);
     return InputDecoration(
@@ -578,18 +713,4 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    const maroonColor = Color(0xFF800000);
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: maroonColor,
-        ),
-      ),
-    );
-  }
 }

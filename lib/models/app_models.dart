@@ -142,12 +142,16 @@ class WorkerModel {
   final String name;
   final String email;
   final String phone;
+  final String birthday;
   final String address;
   final String workCategory; // e.g. Carpentry, Plumbing
   final double hourlyRate;   // Money rate per hour in PHP
   final String workingPermitNo;
   final String nationalCertificateNo; // TESDA / NC II certificate
   final String proficiencyProof;      // Document name / info
+  final String? nationalCertificateDoc; // Base64 or image path of scanned NC
+  final String? workingPermitDoc;      // Base64 or image path of scanned Permit
+  final String? profileImagePath;
   final double rating;
   final int completedJobs;
   final bool isAvailable;
@@ -159,12 +163,16 @@ class WorkerModel {
     required this.name,
     required this.email,
     required this.phone,
+    this.birthday = '',
     required this.address,
     required this.workCategory,
     required this.hourlyRate,
     required this.workingPermitNo,
     required this.nationalCertificateNo,
     required this.proficiencyProof,
+    this.nationalCertificateDoc,
+    this.workingPermitDoc,
+    this.profileImagePath,
     this.rating = 4.8,
     this.completedJobs = 12,
     this.isAvailable = true,
@@ -177,12 +185,16 @@ class WorkerModel {
         'name': name,
         'email': email,
         'phone': phone,
+        'birthday': birthday,
         'address': address,
         'work_category': workCategory,
         'hourly_rate': hourlyRate,
         'working_permit_no': workingPermitNo,
         'national_certificate_no': nationalCertificateNo,
         'proficiency_proof': proficiencyProof,
+        'national_certificate_doc': nationalCertificateDoc,
+        'working_permit_doc': workingPermitDoc,
+        'profile_image_path': profileImagePath,
         'rating': rating,
         'completed_jobs': completedJobs,
         'is_available': isAvailable,
@@ -195,18 +207,66 @@ class WorkerModel {
         name: json['name'] ?? '',
         email: json['email'] ?? '',
         phone: json['phone'] ?? '',
+        birthday: json['birthday'] ?? '',
         address: json['address'] ?? '',
         workCategory: json['work_category'] ?? 'Carpentry',
         hourlyRate: (json['hourly_rate'] as num?)?.toDouble() ?? 250.0,
         workingPermitNo: json['working_permit_no'] ?? '',
         nationalCertificateNo: json['national_certificate_no'] ?? '',
         proficiencyProof: json['proficiency_proof'] ?? '',
+        nationalCertificateDoc: json['national_certificate_doc'],
+        workingPermitDoc: json['working_permit_doc'],
+        profileImagePath: json['profile_image_path'],
         rating: (json['rating'] as num?)?.toDouble() ?? 5.0,
         completedJobs: (json['completed_jobs'] as num?)?.toInt() ?? 0,
         isAvailable: json['is_available'] ?? true,
         latitude: (json['latitude'] as num?)?.toDouble() ?? 11.5610,
         longitude: (json['longitude'] as num?)?.toDouble() ?? 124.3990,
       );
+
+  WorkerModel copyWith({
+    String? id,
+    String? name,
+    String? email,
+    String? phone,
+    String? birthday,
+    String? address,
+    String? workCategory,
+    double? hourlyRate,
+    String? workingPermitNo,
+    String? nationalCertificateNo,
+    String? proficiencyProof,
+    String? nationalCertificateDoc,
+    String? workingPermitDoc,
+    String? profileImagePath,
+    double? rating,
+    int? completedJobs,
+    bool? isAvailable,
+    double? latitude,
+    double? longitude,
+  }) {
+    return WorkerModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      birthday: birthday ?? this.birthday,
+      address: address ?? this.address,
+      workCategory: workCategory ?? this.workCategory,
+      hourlyRate: hourlyRate ?? this.hourlyRate,
+      workingPermitNo: workingPermitNo ?? this.workingPermitNo,
+      nationalCertificateNo: nationalCertificateNo ?? this.nationalCertificateNo,
+      proficiencyProof: proficiencyProof ?? this.proficiencyProof,
+      nationalCertificateDoc: nationalCertificateDoc ?? this.nationalCertificateDoc,
+      workingPermitDoc: workingPermitDoc ?? this.workingPermitDoc,
+      profileImagePath: profileImagePath ?? this.profileImagePath,
+      rating: rating ?? this.rating,
+      completedJobs: completedJobs ?? this.completedJobs,
+      isAvailable: isAvailable ?? this.isAvailable,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+    );
+  }
 }
 
 class JobBooking {
