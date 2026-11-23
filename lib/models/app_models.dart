@@ -222,9 +222,11 @@ class JobBooking {
   final String workDetails;
   final double hourlyRate; // Rate per hour offered or requested
   final double estimatedHours;
+  final int workersNeeded;
   final String status; // 'Pending', 'Accepted', 'In Progress', 'Completed', 'Cancelled'
   final String? assignedWorkerId;
   final String? assignedWorkerName;
+  final String? cancellationReason;
   final String createdAt;
 
   JobBooking({
@@ -240,13 +242,15 @@ class JobBooking {
     required this.workDetails,
     required this.hourlyRate,
     required this.estimatedHours,
+    this.workersNeeded = 1,
     this.status = 'Pending',
     this.assignedWorkerId,
     this.assignedWorkerName,
+    this.cancellationReason,
     required this.createdAt,
   });
 
-  double get estimatedTotal => hourlyRate * estimatedHours;
+  double get estimatedTotal => hourlyRate * estimatedHours * workersNeeded;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -261,9 +265,11 @@ class JobBooking {
         'work_details': workDetails,
         'hourly_rate': hourlyRate,
         'estimated_hours': estimatedHours,
+        'workers_needed': workersNeeded,
         'status': status,
         'assigned_worker_id': assignedWorkerId,
         'assigned_worker_name': assignedWorkerName,
+        'cancellation_reason': cancellationReason,
         'created_at': createdAt,
       };
 
@@ -280,9 +286,53 @@ class JobBooking {
         workDetails: json['work_details'] ?? '',
         hourlyRate: (json['hourly_rate'] as num?)?.toDouble() ?? 250.0,
         estimatedHours: (json['estimated_hours'] as num?)?.toDouble() ?? 2.0,
+        workersNeeded: json['workers_needed'] ?? 1,
         status: json['status'] ?? 'Pending',
         assignedWorkerId: json['assigned_worker_id'],
         assignedWorkerName: json['assigned_worker_name'],
+        cancellationReason: json['cancellation_reason'],
         createdAt: json['created_at'] ?? '',
       );
+
+  JobBooking copyWith({
+    String? id,
+    String? customerId,
+    String? customerName,
+    String? customerPhone,
+    String? customerAddress,
+    double? customerLat,
+    double? customerLng,
+    String? workCategory,
+    String? title,
+    String? workDetails,
+    double? hourlyRate,
+    double? estimatedHours,
+    int? workersNeeded,
+    String? status,
+    String? assignedWorkerId,
+    String? assignedWorkerName,
+    String? cancellationReason,
+    String? createdAt,
+  }) {
+    return JobBooking(
+      id: id ?? this.id,
+      customerId: customerId ?? this.customerId,
+      customerName: customerName ?? this.customerName,
+      customerPhone: customerPhone ?? this.customerPhone,
+      customerAddress: customerAddress ?? this.customerAddress,
+      customerLat: customerLat ?? this.customerLat,
+      customerLng: customerLng ?? this.customerLng,
+      workCategory: workCategory ?? this.workCategory,
+      title: title ?? this.title,
+      workDetails: workDetails ?? this.workDetails,
+      hourlyRate: hourlyRate ?? this.hourlyRate,
+      estimatedHours: estimatedHours ?? this.estimatedHours,
+      workersNeeded: workersNeeded ?? this.workersNeeded,
+      status: status ?? this.status,
+      assignedWorkerId: assignedWorkerId ?? this.assignedWorkerId,
+      assignedWorkerName: assignedWorkerName ?? this.assignedWorkerName,
+      cancellationReason: cancellationReason ?? this.cancellationReason,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 }

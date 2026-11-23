@@ -110,6 +110,39 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                       'Posted on: ${job.createdAt}',
                       style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                     ),
+                    if (job.status == 'Cancelled') ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.cancel, color: Colors.red, size: 18),
+                                SizedBox(width: 8),
+                                Text(
+                                  'This Job Request was Cancelled',
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                            if (job.cancellationReason != null && job.cancellationReason!.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Reason: ${job.cancellationReason}',
+                                style: const TextStyle(fontSize: 12, color: Colors.black87),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                     const Divider(height: 24),
 
                     // Work details description
@@ -151,6 +184,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     _buildInfoRow(Icons.phone, 'Contact Number', job.customerPhone),
                     const SizedBox(height: 4),
                     _buildInfoRow(Icons.location_on, 'Job Address', job.customerAddress),
+                    const SizedBox(height: 4),
+                    _buildInfoRow(Icons.group, 'Workers Needed', '${job.workersNeeded} Worker${job.workersNeeded > 1 ? 's' : ''}'),
                     const Divider(height: 24),
 
                     // Payout Calculation
@@ -195,6 +230,27 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     const SizedBox(height: 20),
 
                     // Action buttons
+                    if (!isWorker && job.status == 'Pending') ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red[700],
+                            side: BorderSide(color: Colors.red.shade300),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () => _showCancelDialog(context, job),
+                          icon: const Icon(Icons.cancel_outlined, color: Colors.red),
+                          label: const Text(
+                            'CANCEL JOB REQUEST',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
                     if (isWorker && currentWorker != null) ...[
                       if (job.status == 'Pending')
                         SizedBox(
@@ -260,6 +316,80 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  void _showCancelDialog(BuildContext context, JobBooking job) {
+    const maroonColor = Color(0xFF800000);
+    final reasonCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.cancel, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Cancel Job Request'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Please let us know why you are cancelling this job request:',
+                style: TextStyle(fontSize: 13, color: Colors.black87),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reasonCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for cancellation',
+                  hintText: 'e.g., Mistakenly made request, wrong info, found another worker...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('BACK'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[700],
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                final reason = reasonCtrl.text.trim();
+                if (reason.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a cancellation reason.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                _dataService.cancelJob(job.id, reason);
+                Navigator.pop(dialogContext); // close dialog
+                Navigator.pop(context); // return to home screen
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Job request cancelled successfully.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              },
+              child: const Text('CONFIRM CANCELLATION'),
+            ),
+          ],
+        );
+      },
     );
   }
 

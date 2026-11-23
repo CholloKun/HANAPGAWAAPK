@@ -137,15 +137,21 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
   @override
   void didUpdateWidget(covariant InteractiveMapWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_activeJob != null && _activeJob!.status == 'Cancelled') {
+      _activeJob = null;
+    }
     if (widget.jobs.length > oldWidget.jobs.length) {
-      final newestJob = widget.jobs.first;
-      setState(() {
-        _activeJob = newestJob;
-      });
-      _mapController.move(
-        LatLng(newestJob.customerLat, newestJob.customerLng),
-        15.5,
-      );
+      final activeList = widget.jobs.where((j) => j.status != 'Cancelled').toList();
+      if (activeList.isNotEmpty) {
+        final newestJob = activeList.first;
+        setState(() {
+          _activeJob = newestJob;
+        });
+        _mapController.move(
+          LatLng(newestJob.customerLat, newestJob.customerLng),
+          15.5,
+        );
+      }
     } else if (widget.selectedJob != null && widget.selectedJob != oldWidget.selectedJob) {
       _activeJob = widget.selectedJob;
       _mapController.move(
@@ -266,8 +272,8 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                       ),
                     ),
 
-                    // Customer Job Markers
-                    ...widget.jobs.map((job) {
+                    // Customer Job Markers (Exclude cancelled jobs)
+                    ...widget.jobs.where((job) => job.status != 'Cancelled').map((job) {
                       final isSelected = _activeJob?.id == job.id;
                       final point = LatLng(job.customerLat, job.customerLng);
 

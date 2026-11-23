@@ -119,6 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
       bool isConfirmed = true;
       if (SupabaseService().isInitialized) {
         final authResponse = await SupabaseService().signIn(email: email, password: password);
+        if (!mounted) return;
         if (authResponse == null || authResponse.user == null) {
           if (isCustomInput) {
             _showErrorNotification('Incorrect email or password. Please check your details and try again.');
@@ -126,6 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         } else {
           isConfirmed = await SupabaseService().isEmailConfirmed();
+          if (!mounted) return;
         }
       }
 
@@ -191,20 +193,34 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _proceedToCustomerHome(String email) {
-    final customer = CustomerModel(
-      id: 'c_user',
-      name: 'Juan Dela Cruz',
+  Future<void> _proceedToCustomerHome(String email) async {
+    CustomerModel? existingCustomer = await SupabaseService().getCustomerByEmail(email);
+
+    if (existingCustomer == null && _dataService.currentCustomer != null && _dataService.currentCustomer!.email.toLowerCase() == email.toLowerCase()) {
+      existingCustomer = _dataService.currentCustomer;
+    }
+
+    final nameFromEmail = email.split('@').first;
+    final formattedName = nameFromEmail.isNotEmpty
+        ? nameFromEmail[0].toUpperCase() + nameFromEmail.substring(1)
+        : 'Valued Client';
+
+    final customer = existingCustomer ?? CustomerModel(
+      id: 'c_${email.hashCode}',
+      name: formattedName,
       email: email,
       phone: '0917-888-9900',
       birthday: '1995-04-12',
       address: 'Naval, Biliran, Philippines',
     );
+
     _dataService.setLoggedInCustomer(customer);
-    Navigator.pushReplacement(
-      context,
-      _smoothRoute(const CustomerHomeScreen()),
-    );
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        _smoothRoute(const CustomerHomeScreen()),
+      );
+    }
   }
 
   @override

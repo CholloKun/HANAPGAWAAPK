@@ -21,7 +21,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
   // Shared fields
   late UserRole _role;
-  final _nameCtrl = TextEditingController();
+  final _firstNameCtrl = TextEditingController();
+  final _middleNameCtrl = TextEditingController();
+  final _lastNameCtrl = TextEditingController();
+  final _suffixCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _addressCtrl = TextEditingController(text: 'Naval, Biliran, Philippines');
@@ -43,6 +46,24 @@ class _SignupScreenState extends State<SignupScreen> {
   void initState() {
     super.initState();
     _role = widget.initialRole;
+  }
+
+  @override
+  void dispose() {
+    _firstNameCtrl.dispose();
+    _middleNameCtrl.dispose();
+    _lastNameCtrl.dispose();
+    _suffixCtrl.dispose();
+    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
+    _addressCtrl.dispose();
+    _passwordCtrl.dispose();
+    _birthdayCtrl.dispose();
+    _hourlyRateCtrl.dispose();
+    _workingPermitCtrl.dispose();
+    _nationalCertCtrl.dispose();
+    _proficiencyProofCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _selectBirthday(BuildContext context) async {
@@ -103,10 +124,17 @@ class _SignupScreenState extends State<SignupScreen> {
     }
 
     // 2. Register into Supabase DB table / DataService
+    final fullName = [
+      _firstNameCtrl.text.trim(),
+      if (_middleNameCtrl.text.trim().isNotEmpty) _middleNameCtrl.text.trim(),
+      _lastNameCtrl.text.trim(),
+      if (_suffixCtrl.text.trim().isNotEmpty) _suffixCtrl.text.trim(),
+    ].join(' ');
+
     if (_role == UserRole.customer) {
       await _dataService.registerCustomer(
         id: userId,
-        name: _nameCtrl.text.trim(),
+        name: fullName,
         email: email,
         phone: _phoneCtrl.text.trim(),
         birthday: _birthdayCtrl.text.trim(),
@@ -120,7 +148,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } else {
       await _dataService.registerWorker(
         id: userId,
-        name: _nameCtrl.text.trim(),
+        name: fullName,
         email: email,
         phone: _phoneCtrl.text.trim(),
         address: _addressCtrl.text.trim(),
@@ -292,11 +320,30 @@ class _SignupScreenState extends State<SignupScreen> {
               _buildSectionTitle('Personal Details'),
               const SizedBox(height: 12),
 
-              // Full Name
+              // First Name, Middle Name, Last Name, Suffix
               TextFormField(
-                controller: _nameCtrl,
-                decoration: _inputDecoration('Full Name', Icons.person_outline),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter full name' : null,
+                controller: _firstNameCtrl,
+                decoration: _inputDecoration('First Name', Icons.person_outline),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter first name' : null,
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _middleNameCtrl,
+                decoration: _inputDecoration('Middle Name (Optional)', Icons.person_outline),
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _lastNameCtrl,
+                decoration: _inputDecoration('Last Name', Icons.person_outline),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter last name' : null,
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _suffixCtrl,
+                decoration: _inputDecoration('Suffix (Optional, e.g. Jr., III, Sr.)', Icons.badge_outlined),
               ),
               const SizedBox(height: 12),
 

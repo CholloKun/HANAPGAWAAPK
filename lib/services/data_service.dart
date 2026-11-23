@@ -225,6 +225,7 @@ class DataService extends ChangeNotifier {
     required String workDetails,
     required double hourlyRate,
     required double estimatedHours,
+    required int workersNeeded,
     required String address,
     double? latitude,
     double? longitude,
@@ -276,6 +277,7 @@ class DataService extends ChangeNotifier {
       workDetails: workDetails,
       hourlyRate: hourlyRate,
       estimatedHours: estimatedHours,
+      workersNeeded: workersNeeded,
       status: 'Pending',
       createdAt: DateTime.now().toString().split('.').first,
     );
@@ -283,6 +285,20 @@ class DataService extends ChangeNotifier {
     _jobs.insert(0, newJob);
     notifyListeners();
     _supabaseService.saveJob(newJob);
+  }
+
+  // Cancel job request with reason
+  void cancelJob(String jobId, String reason) {
+    final index = _jobs.indexWhere((j) => j.id == jobId);
+    if (index != -1) {
+      final existing = _jobs[index];
+      _jobs[index] = existing.copyWith(
+        status: 'Cancelled',
+        cancellationReason: reason,
+      );
+      notifyListeners();
+      _supabaseService.saveJob(_jobs[index]);
+    }
   }
 
   // Worker accepts job

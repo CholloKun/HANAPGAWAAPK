@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/app_models.dart';
@@ -108,6 +109,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   void _openCustomerProfileModal(BuildContext context, CustomerModel customer) {
     const maroonColor = Color(0xFF800000);
+    final updatedCustomer = _dataService.currentCustomer ?? customer;
+    
+    _nameCtrl.text = updatedCustomer.name;
+    _phoneCtrl.text = updatedCustomer.phone;
+    _birthdayCtrl.text = updatedCustomer.birthday;
+    _addressCtrl.text = updatedCustomer.address;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -115,10 +123,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       builder: (modalContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final updatedCustomer = _dataService.currentCustomer ?? customer;
-            final hasAvatar = updatedCustomer.profileImagePath != null &&
-                updatedCustomer.profileImagePath!.isNotEmpty &&
-                File(updatedCustomer.profileImagePath!).existsSync();
+            final currentCust = _dataService.currentCustomer ?? updatedCustomer;
+            final hasAvatar = currentCust.profileImagePath != null &&
+                currentCust.profileImagePath!.isNotEmpty;
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.85,
@@ -168,21 +175,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     // Avatar Circle with Camera Badge
                     Stack(
                       children: [
-                        CircleAvatar(
-                          radius: 50,
-                          backgroundColor: maroonColor,
-                          backgroundImage: hasAvatar ? FileImage(File(updatedCustomer.profileImagePath!)) : null,
-                          child: !hasAvatar
-                              ? Text(
-                                  updatedCustomer.name.isNotEmpty ? updatedCustomer.name[0].toUpperCase() : 'C',
-                                  style: const TextStyle(
-                                    fontSize: 44,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                )
-                              : null,
-                        ),
+                        _buildAvatarImage(updatedCustomer.profileImagePath, radius: 50, fallbackInitial: updatedCustomer.name),
                         Positioned(
                           right: 0,
                           bottom: 0,
@@ -369,8 +362,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final filteredWorkers = _dataService.getWorkersByCategory(_selectedCategory);
 
     final hasAvatar = currentCustomer.profileImagePath != null &&
-        currentCustomer.profileImagePath!.isNotEmpty &&
-        File(currentCustomer.profileImagePath!).existsSync();
+        currentCustomer.profileImagePath!.isNotEmpty;
 
     return DefaultTabController(
       length: 3,
@@ -387,21 +379,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 onTap: () => _openCustomerProfileModal(context, currentCustomer),
                 child: Stack(
                   children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundColor: Colors.white,
-                      backgroundImage: hasAvatar ? FileImage(File(currentCustomer.profileImagePath!)) : null,
-                      child: !hasAvatar
-                          ? Text(
-                              currentCustomer.name.isNotEmpty ? currentCustomer.name[0].toUpperCase() : 'C',
-                              style: const TextStyle(
-                                color: maroonColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                            )
-                          : null,
-                    ),
+                    _buildAvatarImage(currentCustomer.profileImagePath, radius: 22, fallbackInitial: currentCustomer.name),
                     Positioned(
                       right: 0,
                       bottom: 0,
@@ -1134,6 +1112,46 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAvatarImage(String? imagePath, {double radius = 22, String fallbackInitial = 'C'}) {
+    const maroonColor = Color(0xFF800000);
+    final hasAvatar = imagePath != null && imagePath.isNotEmpty;
+
+    if (hasAvatar) {
+      if (kIsWeb || imagePath.startsWith('http') || imagePath.startsWith('blob:') || imagePath.startsWith('assets/')) {
+        return CircleAvatar(
+          radius: radius,
+          backgroundColor: Colors.white,
+          backgroundImage: NetworkImage(imagePath),
+        );
+      } else {
+        try {
+          return CircleAvatar(
+            radius: radius,
+            backgroundColor: Colors.white,
+            backgroundImage: FileImage(File(imagePath)),
+          );
+        } catch (e) {
+          // Fallback
+        }
+      }
+    }
+
+    final isSmall = radius <= 25;
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: isSmall ? Colors.white : maroonColor,
+      child: Text(
+        fallbackInitial.isNotEmpty ? fallbackInitial[0].toUpperCase() : 'C',
+        style: TextStyle(
+          color: isSmall ? maroonColor : Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: radius * 0.8,
+        ),
+      ),
     );
   }
 

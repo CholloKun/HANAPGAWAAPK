@@ -31,6 +31,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   double? _selectedLat;
   double? _selectedLng;
+  int _workersNeeded = 1;
 
   final DataService _dataService = DataService();
 
@@ -59,6 +60,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       workDetails: _detailsCtrl.text.trim(),
       hourlyRate: rate,
       estimatedHours: hours,
+      workersNeeded: _workersNeeded,
       address: _addressCtrl.text.trim(),
       latitude: _selectedLat,
       longitude: _selectedLng,
@@ -82,7 +84,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
     final currentRate = double.tryParse(_rateCtrl.text) ?? 0.0;
     final currentHours = double.tryParse(_hoursCtrl.text) ?? 0.0;
-    final estimatedTotal = currentRate * currentHours;
+    final estimatedTotal = currentRate * currentHours * _workersNeeded;
 
     return Scaffold(
       appBar: AppBar(
@@ -230,6 +232,24 @@ class _PostJobScreenState extends State<PostJobScreen> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 14),
+
+              // Number of Workers Needed Dropdown
+              DropdownButtonFormField<int>(
+                value: _workersNeeded,
+                decoration: const InputDecoration(
+                  labelText: 'Number of Workers Needed',
+                  prefixIcon: Icon(Icons.group, color: maroonColor),
+                  border: OutlineInputBorder(),
+                ),
+                items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                    .map((n) => DropdownMenuItem(
+                          value: n,
+                          child: Text('$n Worker${n > 1 ? 's' : ''} Needed'),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _workersNeeded = v ?? 1),
               ),
               const SizedBox(height: 14),
 

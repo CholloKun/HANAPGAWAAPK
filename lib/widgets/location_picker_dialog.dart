@@ -56,6 +56,32 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
   double _currentZoom = 15.0;
   double _currentRotation = 0.0;
   bool _isLoadingGps = false;
+  List<dynamic> _addressSuggestions = [];
+
+  Future<void> _fetchAddressSuggestions(String query) async {
+    if (query.trim().length < 3) {
+      setState(() {
+        _addressSuggestions = [];
+      });
+      return;
+    }
+    try {
+      final encoded = Uri.encodeComponent(query);
+      final url = Uri.parse('https://nominatim.openstreetmap.org/search?format=json&q=$encoded&limit=5');
+      final response = await http.get(url, headers: {'User-Agent': 'com.hanapgawa.app'});
+
+      if (response.statusCode == 200) {
+        final List data = json.decode(response.body);
+        if (mounted) {
+          setState(() {
+            _addressSuggestions = data;
+          });
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }
 
   final List<Map<String, dynamic>> _popularLocations = [
     {
@@ -363,6 +389,7 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                           }
                         },
                         onTap: (tapPosition, point) {
+                          _mapController.move(point, _currentZoom);
                           _updateAddressFromPoint(point);
                         },
                       ),
@@ -654,6 +681,7 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                     // Selected Address TextFormField (Auto-updated or manually editable!)
                     TextFormField(
                       controller: _addressCtrl,
+                      onChanged: (q) => _fetchAddressSuggestions(q),
                       decoration: InputDecoration(
                         labelText: 'Pinned Address / Location (Auto-filled / Fully Editable)',
                         prefixIcon: const Icon(Icons.pin_drop, color: maroonColor),
@@ -668,9 +696,50 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                               )
                             : const Icon(Icons.edit, size: 18, color: Colors.grey),
                         border: const OutlineInputBorder(),
-                        helperText: 'Auto-fills exact street/landmark when you tap map, or type/edit manually',
+                        helperText: 'Type place for suggestions, or tap map to pin location',
                       ),
                     ),
+                    if (_addressSuggestions.isNotEmpty)
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 160),
+                        margin: const EdgeInsets.only(top: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                        ),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.zero,
+                          itemCount: _addressSuggestions.length,
+                          itemBuilder: (context, index) {
+                            final item = _addressSuggestions[index];
+                            final displayName = item['display_name'] ?? '';
+                            final lat = double.tryParse(item['lat'].toString()) ?? 11.5606;
+                            final lon = double.tryParse(item['lon'].toString()) ?? 124.3986;
+
+                            return ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.location_on, color: maroonColor, size: 18),
+                              title: Text(
+                                displayName,
+                                style: const TextStyle(fontSize: 11),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              onTap: () {
+                                setState(() {
+                                  _addressCtrl.text = displayName;
+                                  _selectedPoint = LatLng(lat, lon);
+                                  _addressSuggestions = [];
+                                });
+                                _mapController.move(_selectedPoint, 16.0);
+                              },
+                            );
+                          },
+                        ),
+                      ),
                     const SizedBox(height: 14),
 
                     // Actions
