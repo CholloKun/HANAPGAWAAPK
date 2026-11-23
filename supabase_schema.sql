@@ -1,5 +1,5 @@
 -- ============================================================
--- HANAP GAWA - COMPLETE SUPABASE DATABASE SCHEMA
+-- HANAP GAWA - COMPLETE SUPABASE DATABASE SCHEMA (WITH REVIEWS)
 -- Copy & paste this script into your Supabase Dashboard SQL Editor (https://supabase.com/dashboard)
 -- ============================================================
 
@@ -73,6 +73,18 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 5. Create Reviews Table
+CREATE TABLE IF NOT EXISTS public.reviews (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    worker_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL,
+    customer_name TEXT NOT NULL,
+    rating DOUBLE PRECISION NOT NULL DEFAULT 5.0,
+    comment TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 -- Ensure all columns exist if tables were created previously
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS profile_image_path TEXT;
 ALTER TABLE public.workers ADD COLUMN IF NOT EXISTS birthday TEXT;
@@ -88,6 +100,7 @@ ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow public access on customers" ON public.customers;
 CREATE POLICY "Allow public access on customers" ON public.customers FOR ALL USING (true) WITH CHECK (true);
@@ -100,3 +113,6 @@ CREATE POLICY "Allow public access on job_bookings" ON public.job_bookings FOR A
 
 DROP POLICY IF EXISTS "Allow public access on notifications" ON public.notifications;
 CREATE POLICY "Allow public access on notifications" ON public.notifications FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public access on reviews" ON public.reviews;
+CREATE POLICY "Allow public access on reviews" ON public.reviews FOR ALL USING (true) WITH CHECK (true);

@@ -230,6 +230,27 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     const SizedBox(height: 20),
 
                     // Action buttons
+                    if (!isWorker && job.status == 'Completed' && job.assignedWorkerId != null) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber[800],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () => _showReviewDialog(context, job),
+                          icon: const Icon(Icons.star, color: Colors.white),
+                          label: const Text(
+                            'LEAVE REVIEW & RATING',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
                     if (!isWorker && job.status == 'Pending') ...[
                       SizedBox(
                         width: double.infinity,
@@ -319,8 +340,104 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  void _showCancelDialog(BuildContext context, JobBooking job) {
+  void _showReviewDialog(BuildContext context, JobBooking job) {
     const maroonColor = Color(0xFF800000);
+    double rating = 5.0;
+    final commentCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.star, color: Colors.amber),
+                  SizedBox(width: 8),
+                  Text('Rate & Review Worker'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('How was your experience with ${job.assignedWorkerName ?? 'the worker'}?', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 16),
+                  Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(5, (index) {
+                        final star = index + 1;
+                        return IconButton(
+                          icon: Icon(
+                            star <= rating ? Icons.star : Icons.star_border,
+                            color: Colors.amber,
+                            size: 32,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              rating = star.toDouble();
+                            });
+                          },
+                        );
+                      }),
+                    ),
+                  ),
+                  const Center(
+                    child: Text('Tap stars to rate', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: commentCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Write a review (optional)',
+                      hintText: 'e.g., Professional, punctual, excellent work quality...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('CANCEL'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: maroonColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () async {
+                    await _dataService.addReview(
+                      jobId: job.id,
+                      workerId: job.assignedWorkerId!,
+                      rating: rating,
+                      comment: commentCtrl.text.trim(),
+                    );
+                    if (mounted) {
+                      Navigator.pop(dialogContext);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Review submitted successfully! Thank you.'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                      setState(() {});
+                    }
+                  },
+                  child: const Text('SUBMIT REVIEW'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showCancelDialog(BuildContext context, JobBooking job) {
     final reasonCtrl = TextEditingController();
 
     showDialog(

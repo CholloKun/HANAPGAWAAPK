@@ -164,11 +164,63 @@ class DataService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setLoggedInWorker(WorkerModel worker) {
+  Future<void> setLoggedInWorker(WorkerModel worker) async {
     _currentUserRole = UserRole.worker;
-    _currentWorker = worker;
+
+    String? avatar = worker.profileImagePath;
+    if (avatar == null || avatar.isEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        avatar = prefs.getString('worker_avatar_${worker.email}');
+      } catch (e) {
+        if (kDebugMode) print(e);
+      }
+    }
+
+    _currentWorker = avatar != null && avatar.isNotEmpty
+        ? worker.copyWith(profileImagePath: avatar)
+        : worker;
+
     _currentCustomer = null;
-    notifyListeners();
+    await syncWithSupabase();
+  }
+
+  Future<void> updateWorkerProfile({
+    String? name,
+    String? phone,
+    String? birthday,
+    String? address,
+    String? profileImagePath,
+    String? nationalCertificateDoc,
+    String? workingPermitDoc,
+    double? hourlyRate,
+  }) async {
+    if (_currentWorker != null) {
+      final String? finalAvatar = profileImagePath ?? _currentWorker!.profileImagePath;
+
+      _currentWorker = _currentWorker!.copyWith(
+        name: name,
+        phone: phone,
+        birthday: birthday,
+        address: address,
+        profileImagePath: finalAvatar,
+        nationalCertificateDoc: nationalCertificateDoc ?? _currentWorker!.nationalCertificateDoc,
+        workingPermitDoc: workingPermitDoc ?? _currentWorker!.workingPermitDoc,
+        hourlyRate: hourlyRate ?? _currentWorker!.hourlyRate,
+      );
+
+      if (finalAvatar != null && finalAvatar.isNotEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('worker_avatar_${_currentWorker!.email}', finalAvatar);
+        } catch (e) {
+          if (kDebugMode) print(e);
+        }
+      }
+
+      await _supabaseService.saveWorker(_currentWorker!);
+      notifyListeners();
+    }
   }
 
   void switchRole(UserRole role) {
@@ -350,6 +402,19 @@ class DataService extends ChangeNotifier {
     _jobs.insert(0, newJob);
     notifyListeners();
     await _supabaseService.saveJob(newJob);
+
+    for (final w in _workers) {
+      final workerNotif = NotificationModel(
+        id: 'notif_w_${DateTime.now().millisecondsSinceEpoch}_${w.id}',
+        userId: w.id,
+        title: 'New Job Request Posted! 🔔',
+        message: 'Client ${cust.name} posted a new ${workCategory} request in ${address}.',
+        isRead: false,
+        createdAt: DateTime.now().toString().split('.').first,
+      );
+      _notifications.insert(0, workerNotif);
+      await _supabaseService.saveNotification(workerNotif);
+    }
   }
 
   // Cancel job request with reason and permanent deletion from Supabase
@@ -466,5 +531,38 @@ class DataService extends ChangeNotifier {
       notifyListeners();
       await _supabaseService.markNotificationAsRead(notifId);
     }
+  }
+
+  // --- REVIEWS & RATINGS ---
+  final List<ReviewModel> _reviews = [];
+  List<ReviewModel> get reviews => List.unmodifiable(_reviews);
+
+  Future<void> addReview({
+    required String jobId,
+    required String workerId,
+    required double rating,
+    required String comment,
+  }) async {
+    final cust = _currentCustomer;
+    if (cust == null) return;
+
+    final review = ReviewModel(
+      id: 'rev_${DateTime.now().millisecondsSinceEpoch}',
+      jobId: jobId,
+      workerId: workerId,
+      customerId: cust.id,
+      customerName: cust.name,
+      rating: rating,
+      comment: comment,
+      createdAt: DateTime.now().toString().split('.').first,
+    );
+
+    _reviews.insert(0, review);
+    notifyListeners();
+    await _supabaseService.saveReview(review);
+  }
+
+  Future<List<ReviewModel>> getReviewsForWorker(String workerId) async {
+    return await _supabaseService.fetchReviewsForWorker(workerId);
   }
 }

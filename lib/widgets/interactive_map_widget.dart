@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
@@ -154,9 +155,10 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
       }
     } else if (widget.selectedJob != null && widget.selectedJob != oldWidget.selectedJob) {
       _activeJob = widget.selectedJob;
+      final targetZoom = _currentZoom > 15.5 ? _currentZoom : 15.5;
       _mapController.move(
         LatLng(_activeJob!.customerLat, _activeJob!.customerLng),
-        15.5,
+        targetZoom,
       );
     }
   }
@@ -272,10 +274,37 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                       ),
                     ),
 
-                    // Customer Job Markers (Exclude cancelled jobs)
-                    ...widget.jobs.where((job) => job.status != 'Cancelled').map((job) {
+                    // Customer Job Markers (Exclude cancelled jobs; apply smart offset if coordinates overlap)
+                    ...widget.jobs
+                        .where((job) => job.status != 'Cancelled')
+                        .toList()
+                        .asMap()
+                        .entries
+                        .map((entry) {
+                      final job = entry.value;
                       final isSelected = _activeJob?.id == job.id;
-                      final point = LatLng(job.customerLat, job.customerLng);
+
+                      double lat = job.customerLat;
+                      double lng = job.customerLng;
+
+                      final overlappingJobs = widget.jobs
+                          .where((j) =>
+                              j.status != 'Cancelled' &&
+                              (j.customerLat - job.customerLat).abs() < 0.0001 &&
+                              (j.customerLng - job.customerLng).abs() < 0.0001)
+                          .toList();
+
+                      if (overlappingJobs.length > 1) {
+                        final subIndex = overlappingJobs.indexOf(job);
+                        if (subIndex > 0) {
+                          final angle = (subIndex * 137.5) * (math.pi / 180.0);
+                          final radius = 0.00028 * (1 + (subIndex ~/ 6) * 0.5);
+                          lat += radius * math.cos(angle);
+                          lng += radius * math.sin(angle);
+                        }
+                      }
+
+                      final point = LatLng(lat, lng);
 
                       return Marker(
                         point: point,
@@ -286,7 +315,8 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
                             setState(() {
                               _activeJob = job;
                             });
-                            _mapController.move(point, 15.0);
+                            final targetZoom = _currentZoom > 15.0 ? _currentZoom : 15.0;
+                            _mapController.move(point, targetZoom);
                             if (widget.onJobSelected != null) {
                               widget.onJobSelected!(job);
                             }

@@ -378,6 +378,35 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     }
   }
 
+  // --- FETCH REVIEWS FOR WORKER ---
+  Future<List<ReviewModel>> fetchReviewsForWorker(String workerId) async {
+    if (!_isInitialized || client == null) return [];
+    try {
+      final response = await client!
+          .from('reviews')
+          .select()
+          .eq('worker_id', workerId)
+          .order('created_at', ascending: false);
+      final List data = response as List;
+      return data.map((json) => ReviewModel.fromJson(json)).toList();
+    } catch (e) {
+      if (kDebugMode) print('Error fetching reviews: $e');
+      return [];
+    }
+  }
+
+  // --- SAVE REVIEW ---
+  Future<bool> saveReview(ReviewModel review) async {
+    if (!_isInitialized || client == null) return false;
+    try {
+      await client!.from('reviews').upsert(review.toJson());
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('Error saving review: $e');
+      return false;
+    }
+  }
+
   Future<bool> isEmailConfirmed() async {
     if (!_isInitialized || client == null) return true;
     try {

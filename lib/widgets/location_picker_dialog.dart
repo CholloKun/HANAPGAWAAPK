@@ -649,32 +649,27 @@ class _LocationPickerDialogState extends State<LocationPickerDialog> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    SizedBox(
-                      height: 36,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: _popularLocations.map((loc) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ActionChip(
-                              label: Text(
-                                loc['name'] as String,
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                              backgroundColor: maroonColor.withAlpha(20),
-                              labelStyle: const TextStyle(color: maroonColor),
-                              onPressed: () {
-                                final point = LatLng(
-                                  loc['lat'] as double,
-                                  loc['lng'] as double,
-                                );
-                                _updateAddressFromPoint(point);
-                                _mapController.move(point, 15.5);
-                              },
-                            ),
-                          );
-                        }).toList(),
-                      ),
+                    Wrap(
+                      spacing: 6.0,
+                      runSpacing: 4.0,
+                      children: _popularLocations.map((loc) {
+                        return ActionChip(
+                          label: Text(
+                            loc['name'] as String,
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          backgroundColor: maroonColor.withAlpha(20),
+                          labelStyle: const TextStyle(color: maroonColor),
+                          onPressed: () {
+                            final point = LatLng(
+                              loc['lat'] as double,
+                              loc['lng'] as double,
+                            );
+                            _updateAddressFromPoint(point);
+                            _mapController.move(point, 15.5);
+                          },
+                        );
+                      }).toList(),
                     ),
                     const SizedBox(height: 12),
 

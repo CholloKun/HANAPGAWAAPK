@@ -450,3 +450,47 @@ class NotificationModel {
     );
   }
 }
+
+class ReviewModel {
+  final String id;
+  final String jobId;
+  final String workerId;
+  final String customerId;
+  final String customerName;
+  final double rating;
+  final String comment;
+  final String createdAt;
+
+  ReviewModel({
+    required this.id,
+    required this.jobId,
+    required this.workerId,
+    required this.customerId,
+    required this.customerName,
+    required this.rating,
+    required this.comment,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'job_id': jobId,
+        'worker_id': workerId,
+        'customer_id': customerId,
+        'customer_name': customerName,
+        'rating': rating,
+        'comment': comment,
+        'created_at': createdAt,
+      };
+
+  factory ReviewModel.fromJson(Map<String, dynamic> json) => ReviewModel(
+        id: json['id'] ?? '',
+        jobId: json['job_id'] ?? '',
+        workerId: json['worker_id'] ?? '',
+        customerId: json['customer_id'] ?? '',
+        customerName: json['customer_name'] ?? 'Customer',
+        rating: (json['rating'] as num?)?.toDouble() ?? 5.0,
+        comment: json['comment'] ?? '',
+        createdAt: json['created_at'] ?? '',
+      );
+}
